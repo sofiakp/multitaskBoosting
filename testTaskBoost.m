@@ -1,4 +1,4 @@
-function testTaskBoost(params_file, outfile_root)
+function testTaskBoost(params_file, outfile_root, folds)
 
 run(params_file);
  
@@ -24,11 +24,17 @@ nmot = sum(sel_mot);
 load(files.fold_file);
 load(fullfile(clust_dir, 'clusters.mat'));
 
-outfile = [outfile_root, '.1.mat'];
-tr = trainSets{1};
-ts = testSets{1};
-
-naive_task_boost(tasks, cexp, pexp, scores, tr, ts, params, train_params, outfile);
+for f = 1:length(folds)
+  outfile = [outfile_root, '.', num2str(folds(f)), '.mat'];
+  tr = trainSets{folds(f)};
+  ts = testSets{folds(f)};
+  
+  if exist(outfile, 'file')
+    warning('Warning:testTaskBoost', 'Output file %s exists. Skipping.', outfile);
+    continue;
+  end
+  naive_task_boost(tasks, cexp, pexp, scores, tr, ts, params, train_params, outfile);
+end
 end
 
 function naive_task_boost(tasks, cexp, pexp, scores, tr, ts, params, train_params, outfile)
