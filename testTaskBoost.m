@@ -71,18 +71,16 @@ for i = 1:params.max_iter
   models{i} = task_models{best_task(i)};
   
   sel_genes = tasks(:, best_task(i));
-  [tr_r tr_c] = find(bsxfun(@times, tr, sel_genes));
-  [ts_r ts_c] = find(bsxfun(@times, ts, sel_genes));
-  X = [pexp([tr_c; ts_c], :) scores([tr_r; ts_r], :)];
-  tr_ind = sub2ind(size(cexp), tr_r, tr_c);
-  ts_ind = sub2ind(size(cexp), ts_r, ts_c);
+  [sel_r sel_c] = find(bsxfun(@times, tr | ts, sel_genes));
+  X = [pexp(sel_c, :) scores(sel_r, :)];
+  sel_ind = sub2ind(size(cexp), sel_r, sel_c);
   pred_tmp = SQBMatrixPredict(models{i}, single(X));
-  pred([tr_ind; ts_ind]) = pred([tr_ind; ts_ind]) + pred_tmp;
+  pred(sel_ind) = pred(sel_ind) + pred_tmp;
   
-  trstats(i, 1) = corr(pred(tr_ind), cexp(tr_ind));
-  tsstats(i, 1) = corr(pred(ts_ind), cexp(ts_ind));
-  trstats(i, 2) = 1 - sum((pred(tr_ind) - cexp(tr_ind)).^2) / sum((cexp(tr_ind) - mean(cexp(tr_ind))).^2);
-  tsstats(i, 2) = 1 - sum((pred(ts_ind) - cexp(ts_ind)).^2) / sum((cexp(ts_ind) - mean(cexp(ts_ind))).^2);
+  trstats(i, 1) = corr(pred(tr), cexp(tr));
+  tsstats(i, 1) = corr(pred(ts), cexp(ts));
+  trstats(i, 2) = 1 - sum((pred(tr) - cexp(tr)).^2) / sum((cexp(tr) - mean(cexp(tr))).^2);
+  tsstats(i, 2) = 1 - sum((pred(ts) - cexp(ts)).^2) / sum((cexp(ts) - mean(cexp(ts))).^2);
   trstats(i, 3) = min_err / nnz(tr);
   tsstats(i, 3) = sum((pred(ts) - cexp(ts)).^2) / nnz(ts);
   
