@@ -1,4 +1,4 @@
-function testTaskBoost(params_file, outfile_root, folds)
+function testTaskBoost(params_file, outfile_root, resume, folds)
 
 run(params_file);
  
@@ -29,28 +29,51 @@ for f = 1:length(folds)
   tr = trainSets{folds(f)};
   ts = testSets{folds(f)};
   
-  if exist(outfile, 'file')
+  if exist(outfile, 'file') && ~resume
     warning('Warning:testTaskBoost', 'Output file %s exists. Skipping.', outfile);
     continue;
+  elseif ~exist(outfile, 'file') && resume
+    warning('Warning:testTaskBoost', 'Output file does not exist, setting resume to false');
+    resume = false;
   end
-  naive_task_boost(tasks, cexp, pexp, scores, tr, ts, params, train_params, outfile);
+  naive_task_boost(tasks, cexp, pexp, scores, tr, ts, params, train_params, outfile, resume);
 end
 end
 
-function naive_task_boost(tasks, cexp, pexp, scores, tr, ts, params, train_params, outfile)
+function naive_task_boost(tasks, cexp, pexp, scores, tr, ts, params, train_params, outfile, resume)
 ntasks = size(tasks, 2);
 
-trstats = zeros(params.max_iter, 3);
-tsstats = zeros(params.max_iter, 3);
-models = cell(params.max_iter, 1);
+if resume
+  load(outfile);
+  start_iter = find(best_task == 0, 1, 'first');
+  if isempty(start_iter)
+    start_iter = size(best_task, 1) + 1;
+  end
+  if params.niter <= start_iter
+    warning('Warning:naive_task_boost', 'Nothing to do for resume');
+    return;
+  end
+  
+  trstats(start_iter:params.niter, :) = nan;
+  tsstats(start_iter:params.niter, :) = nan;
+  models(start_iter:params.niter) = cell(params.niter - start_iter + 1, 1);
+  
+  pred(start_iter:params.niter) = 0;
+  best_task(start_iter:params.niter) = 0;
+else
+  start_iter = 1;
+  trstats = nan(params.niter, 3);
+  tsstats = nan(params.niter, 3);
+  models = cell(params.niter, 1);
+  
+  pred = zeros(size(cexp));
+  best_task = zeros(params.niter, 1);
+end
 
-pred = zeros(size(cexp));
-best_task = zeros(params.max_iter, 1);
 task_models = cell(ntasks, 1);
 task_err = inf(ntasks, 1);
 
-
-for i = 1:params.max_iter
+for i = start_iter:params.niter
   
   for k = 1:(ntasks - 2),
     sel_genes = tasks(:, k);
@@ -60,7 +83,7 @@ for i = 1:params.max_iter
     tr_ind = sub2ind(size(cexp), tr_r, tr_c);
     other_tr_ind = find(bsxfun(@times, tr, ~sel_genes));
     
-    if i == 1 || any(sel_genes & tasks(:, best_task(i - 1)))
+    if i == start_iter || any(sel_genes & tasks(:, best_task(i - 1)))
       task_models{k} = SQBMatrixTrain(single(X), cexp(tr_ind) - pred(tr_ind), uint32(1), train_params);
     end
     pred_tmp = SQBMatrixPredict(task_models{k}, single(X));
