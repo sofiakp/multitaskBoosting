@@ -31,8 +31,11 @@ namespace GBoost {
     unsigned nodeIdx; // Index of node in the tree
     unsigned depth; // Useful to know when to stop growing the tree
     vector<unsigned> idxList; // List of example indices
+    //VectorXi idxList;
     
     RegressionStackEntry(){}
+    //RegressionStackEntry(unsigned listSize) : idxList(listSize) {}
+    RegressionStackEntry(unsigned listSize) {idxList.reserve(listSize);}
   };
   
   // This a stump with a single split on a given variable
@@ -96,12 +99,16 @@ namespace GBoost {
     vector<NodeType> nodes;
     
   public:
-    vector<NodeType>& getNodes() { return nodes; }
+    vector<NodeType>& getNodes() const { return nodes; }
     
   public:
     
     unsigned size() const {
       return nodes.size();
+    }
+    
+    RegressionTree<FeatureDerived, ResponseDerived>(){
+      cout << "Created tree" << endl;
     }
     
     mxArray *saveToMatlab() const {
@@ -199,7 +206,7 @@ namespace GBoost {
      */
      ResponseValueType learnSingleStump(const MatrixBase<FeatureDerived> &X, 
              const MatrixBase<ResponseDerived> &R, const MatrixBase<ResponseDerived> &W,
-             const vector<unsigned> &idxs, IndexType fidx, RegStumpInfo<ResponseValueType> &stumpInfo) {
+             vector<unsigned> &idxs, IndexType fidx, RegStumpInfo<ResponseValueType> &stumpInfo) { //vector<unsigned>
       
       const unsigned N = idxs.size(); // number of examples that will be used for training.
       
@@ -256,7 +263,7 @@ namespace GBoost {
         
         if (stumpInfo.err1 + stumpInfo.err2 >= err1 + err2) {
           stumpInfo.setValues(false, (Xcol(sortedIdx[i]) + Xcol(sortedIdx[i + 1])) / 2, err1, err2, y1, y2, i + 1, N - i - 1);
-        }//else{
+        } //else{
           // Assuming the distribution is trully bimodal, an increase in the error means we should stop.
           //break;
         //}
@@ -281,7 +288,6 @@ namespace GBoost {
       nodes.clear();
       nodes.reserve(min(int(pow(2, maxDepth + 2) - 1), 100)); // maximum number of nodes will be 2^(maxDepth + 2) - 1.
       
-      unsigned nnodes = 0; // number of nodes created so far (or index of next node to add) 
       IndexType nfeat = (IndexType)min((int)X.cols(), (int)ceil(X.cols() * fracFeat)); // number of features to test at each node split
       
       // nodes-to-be will be added in a stack. We'll pop a node, split it, add it to "nodes" and add its children to the stack.
@@ -289,7 +295,7 @@ namespace GBoost {
       
       RegressionStackEntry all;
       all.idxList = idxs;
-      all.nodeIdx = nnodes++;
+      all.nodeIdx = 0;
       all.depth = 0;
       nodeStack.push(all);
       
@@ -317,9 +323,9 @@ namespace GBoost {
         vector< RegStumpInfo< ValueType > > stumpResults(nfeat); // Store the results for all possible splits of this node
         Matrix< ResponseValueType, Dynamic, 1 > stumpErrs(nfeat);
         
-        #pragma omp parallel for num_threads(NUM_SEARCH_THREADS)
+        //#pragma omp parallel for num_threads(NUM_SEARCH_THREADS)
         for (unsigned f = 0; f < nfeat; ++f) {
-          stumpErrs[f] = learnSingleStump(X, R, W, top.idxList, selFeat(f), stumpResults[f]);
+          stumpErrs(f) = learnSingleStump(X, R, W, top.idxList, selFeat(f), stumpResults[f]);
         }
         cout << "Errors " << stumpErrs << endl;
         
@@ -335,31 +341,31 @@ namespace GBoost {
           nodes[top.nodeIdx].value = minStump.y2;
           // No need to add children in the stack or the tree.
         }else{
-          //if (nodes.size() < nnodes + 1) nodes.resize(2*nodes.size());
-          
           NodeType leftNode, rightNode;
           nodes[top.nodeIdx].isLeaf = false;
           nodes[top.nodeIdx].featureIdx = minCol;
           nodes[top.nodeIdx].value = minStump.threshold;
-          nodes[top.nodeIdx].leftNodeIdx = nodes.size(); //nnodes++;
+          nodes[top.nodeIdx].leftNodeIdx = nodes.size();
           nodes.push_back(leftNode);
-          nodes[top.nodeIdx].rightNodeIdx = nodes.size(); //nnodes++;
+          nodes[top.nodeIdx].rightNodeIdx = nodes.size();
           nodes.push_back(rightNode);
           
           bool leftIsLeaf = top.depth >= maxDepth || minStump.n1 < minNodeSize || minStump.err1 / minStump.n1 < minChildErr;
           bool rightIsLeaf = top.depth >= maxDepth || minStump.n2 < minNodeSize || minStump.err2 / minStump.n2 < minChildErr;
           
-          RegressionStackEntry leftEntry, rightEntry;
+          RegressionStackEntry leftEntry(minStump.n1);
+          RegressionStackEntry rightEntry(minStump.n2);
           
           // If both children are leaves, we don't need to find the indices of their examples
           if(!leftIsLeaf || !rightIsLeaf) {
             leftEntry.depth = rightEntry.depth = top.depth + 1;
             
             for(unsigned i = 0; i < top.idxList.size(); ++i){
-              if (X(top.idxList[i], minCol) < minStump.threshold && !leftIsLeaf)
-                leftEntry.idxList.push_back(top.idxList[i]);
-              else if (!rightIsLeaf)
-                rightEntry.idxList.push_back(top.idxList[i]);
+              if (X(top.idxList[i], minCol) <= minStump.threshold){
+                if (!leftIsLeaf) leftEntry.idxList.push_back(top.idxList[i]);
+              } else {
+                if (!rightIsLeaf) rightEntry.idxList.push_back(top.idxList[i]);
+              }
             }
           }
           
@@ -378,23 +384,25 @@ namespace GBoost {
             rightEntry.nodeIdx = nodes[top.nodeIdx].rightNodeIdx;
             nodeStack.push(rightEntry);
           }
+          //cout << "Left list n=" << leftEntry.idxList.size() << ", right list n=" << rightEntry.idxList.size() << endl;
         }
         cout << "Stack size " << nodeStack.size() << " nodes " << nodes.size() << endl;
       }
     }
     
     template < typename FeatureDerived2, typename ResponseDerived2 >
-    void	predict(const MatrixBase<FeatureDerived2> &X, vector<unsigned> &sampIdxs, MatrixBase<ResponseDerived2> &pred) const {
+    void predict(const MatrixBase<FeatureDerived2> &X, vector<unsigned> &sampIdxs, MatrixBase<ResponseDerived2> &pred) const {
+      // pred must either have one row per example, or as many rows as sampIdxs. In the former case, the rows not in sampIdx will be 0.
+  
       const unsigned N = sampIdxs.size();
       
       #pragma omp parallel for num_threads(NUM_SEARCH_THREADS)
       for (unsigned i = 0; i < N; ++i){
-        cout << "Example " << sampIdxs[i] << endl;
         unsigned curNode = 0;
+        unsigned j = (pred.rows() == X.rows())? sampIdxs[i] : i; 
         while(true) {
           if(nodes[curNode].isLeaf){
-            pred(i) = nodes[curNode].value;
-            cout << "Prediction " << i << " " << pred(i) << endl;
+            pred(j) = nodes[curNode].value;
             break;
           }
           
@@ -405,7 +413,6 @@ namespace GBoost {
         }
       }
     }
-    
   };
 }
 
