@@ -33,7 +33,7 @@ namespace GBoost {
     vector<double> alphas; // alphas for each boosting round
     vector<unsigned> bestTasks; // chosen task for each iteration
     unsigned ntasks;
-    
+
   public:
     vector<LearnerType>& getLearners() const{
       return learners;
@@ -46,29 +46,21 @@ namespace GBoost {
     }
     
     TaskTreeBooster(){}
-    
-    void readTasks(const SparseMatrixBase<TaskDerived> &taskInd){
-      
-      ntasks = taskInd.outerSize();
-      taskIdx.clear();
-      taskIdx.reserve(ntasks);
-      taskOvIdx.clear();
-      taskOvIdx.reserve(ntasks);
-      
+    unsigned getTaskIdx(const SparseMatrixBase<TaskDerived> &tInd, vector < vector < unsigned > > &tIdx){
+      unsigned ntasks = tInd.outerSize();
+      tIdx.clear();
+      tIdx.reserve(ntasks);
+
       // Iterate through the examples of each task.
-      const TaskIndexType *outer = taskInd.derived().outerIndexPtr();
-      const TaskIndexType *inner = taskInd.derived().innerIndexPtr();
+      const TaskIndexType *outer = tInd.derived().outerIndexPtr();
+      const TaskIndexType *inner = tInd.derived().innerIndexPtr();
       for(unsigned i = 0; i < ntasks; ++i){
         vector<unsigned> taskList(outer[i + 1] - outer[i], 0);
         for(TaskIndexType j = outer[i]; j < outer[i+1]; ++j){
           taskList[j - outer[i]] = (unsigned)inner[j];
         }
-        taskIdx.push_back(taskList);
-        vector<unsigned> taskOvTmp;
-        taskOvTmp.clear();
-        taskOvTmp.reserve(ntasks);
-        taskOvIdx.push_back(taskOvTmp);
-      }
+        tIdx.push_back(taskList);
+       }
       /*
       for(unsigned i = 0; i < taskInd.outerSize(); ++i){
         taskIdx[i].clear();
@@ -78,12 +70,29 @@ namespace GBoost {
         }
       }
       */
+      return ntasks;
+    }
+
+    void readTasks(const SparseMatrixBase<TaskDerived> &taskInd){
+      
+      ntasks = getTaskIdx(taskInd, taskIdx);
+
+      taskOvIdx.clear();
+      taskOvIdx.reserve(ntasks);
       for(unsigned i = 0; i < ntasks; ++i){
-	taskOvIdx[i].push_back(i);
+       vector<unsigned> taskOvTmp;
+        taskOvTmp.clear();
+        taskOvTmp.reserve(ntasks);
+        taskOvIdx.push_back(taskOvTmp);
+      }
+
+      for(unsigned i = 0; i < ntasks; ++i){
+       	taskOvIdx[i].push_back(i);
         for(unsigned j = i + 1; j < ntasks; ++j){
           vector<unsigned> inter(max(taskIdx[i].size(), taskIdx[j].size()));
           // taskIdx[i] is sorted. interIt will be a pointer to the last position of the intersection
-          vector<unsigned>::iterator interIt = set_intersection(taskIdx[i].begin(), taskIdx[i].end(), taskIdx[j].begin(), taskIdx[j].end(), inter.begin());
+          vector<unsigned>::iterator interIt = set_intersection(taskIdx[i].begin(), taskIdx[i].end(), 
+								taskIdx[j].begin(), taskIdx[j].end(), inter.begin());
           if(inter.begin() != interIt){ // Intersection is not empty
             taskOvIdx[i].push_back(j);
             taskOvIdx[j].push_back(i);
@@ -106,7 +115,7 @@ namespace GBoost {
 
     template < typename Derived, typename OtherDerived>
     ResponseValueType computeLoss(const MatrixBase<ResponseDerived> &Y, const MatrixBase<Derived> &F, const SparseMatrixBase<OtherDerived> &ind){
-      return ind.cwiseProduct(Y - F).cwiseAbs2().sum();
+      return (ind.cwiseProduct(Y - F)).cwiseAbs2().sum();
     }
 
     template < typename OutDerived >
@@ -131,7 +140,7 @@ namespace GBoost {
       }
       
       vector<double> taskAlphas(ntasks); // best alpha for each task
-      ResponseValueVectorType taskErr(ntasks); // Error for each task
+      ResponseValueVectorType taskErr(ntasks); // Reduction in loss for each task
       ResponseValueVectorType W(nexamples);
       ResponseValueVectorType R(nexamples);
       ResponseValueVectorType F(nexamples);
@@ -144,9 +153,8 @@ namespace GBoost {
       
 	setPseudoResiduals(Y, F, W, R);
 
-	//ResponseValueType oldErr = (iter > 0)? err(iter - 1): computeLoss(Y, F); // Error of last iteration
+	ResponseValueType oldErr = (iter > 0)? err(iter - 1): computeLoss(Y, F); // Error of last iteration
         vector< unsigned > todoTasks = (iter > 0)? taskOvIdx[bestTasks[iter - 1]]: allTasks; // We only need to recompute the models for tasks that overlap the last task that we updated.
-      
         cout << "# Tasks " << todoTasks.size() << endl;
         
         // Iterate through the tasks whose optimal model has changed since the last iteration
@@ -158,17 +166,17 @@ namespace GBoost {
           ResponseValueVectorType taskPred(nexamples); 
           taskLearners[todoTasks[t]].predict(X, taskIdx[todoTasks[t]], taskPred); // taskPred will be 0 when taskIdx is 0
           taskAlphas[todoTasks[t]] = shrink;
-	  taskErr(todoTasks[t]) = computeLoss(Y, F + taskAlphas[todoTasks[t]] * taskPred); 
-          //taskPartErr(todoTasks[t]) = .cwiseProduct(R).cwiseAbs2().sum() - taskInd.col(todoTasks[t]).cwiseProduct().cwiseAbs2().sum(); 
+	  taskErr(todoTasks[t]) = computeLoss(Y, F, taskInd.col(todoTasks[t])) - 
+	    computeLoss(Y, F + taskAlphas[todoTasks[t]] * taskPred, taskInd.col(todoTasks[t])); 
         }
 
         //Find the task that gives the minimum error
         unsigned tmp = 0;
-        taskErr.minCoeff(&tmp);
+        taskErr.maxCoeff(&tmp); // Maximum reduction in loss  
         bestTasks.push_back(tmp);
         learners.push_back(taskLearners[bestTasks[iter]]);
         alphas.push_back(taskAlphas[bestTasks[iter]]);
-        err(iter) = taskErr(bestTasks[iter]);
+        err(iter) = oldErr - taskErr(bestTasks[iter]);
         ResponseValueVectorType taskPred(nexamples);
         taskLearners[bestTasks[iter]].predict(X, taskIdx[bestTasks[iter]], taskPred);
         F = F + alphas[iter] * taskPred;
@@ -181,26 +189,36 @@ namespace GBoost {
         revBestTasks[bestTasks[i]].push_back(i);
     }
     
-    template < typename TaskDerived2, typename FeatureDerived2, typename ResponseDerived2 >
-            void	predict(const SparseMatrixBase<TaskDerived2> &tInd, const MatrixBase<FeatureDerived2> &X, vector<unsigned> &sampIdxs,
-            MatrixBase<ResponseDerived2> &pred) const {
-      
+    template < typename ResponseDerived2 >
+    void predict(const SparseMatrixBase<TaskDerived> &tInd, const MatrixBase<FeatureDerived> &X, 
+		  MatrixBase<ResponseDerived2> &pred) {
+
+      typedef typename ResponseDerived2::Scalar RType;
+
       assert(tInd.cols() == ntasks);
-      MatrixBase<ResponseDerived2> treePred(X.rows()); // Predictions of a single tree, for one iteration
-      vector < vector < unsigned > > revBestTasks; // revBestTasks[k] has indices of iterations where the k-th task was selected
-      reverseBestTask(revBestTasks);
-      
-      for(unsigned k = 0; k < ntasks; ++k){
-        vector<unsigned> tIdx; // Indices of examples that belong to the k-th task
-        for(TaskIteratorType it(tInd, k); it; ++it){
-          tIdx.push_back(it.index());
-        }
-        for(unsigned i = 0; i < revBestTasks[k].size(); ++i){
-          unsigned j = revBestTasks[k][i];
-          learners[j].predict(X, tIdx, treePred);
-          pred = pred + alphas[j] * tInd.col(k).cwiseProd(treePred);
-        }
+      vector < vector < unsigned > > tIdx;
+      getTaskIdx(tInd, tIdx);
+
+      // #pragma omp parallel for num_threads(NUM_BOOST_THREADS)
+      for(unsigned i = 0; i < bestTasks.size(); ++i){
+	Matrix<RType, Dynamic, 1> treePred(X.rows()); // Predictions of a single tree, for one iteration
+	learners[i].predict(X, tIdx[bestTasks[i]], treePred);
+	pred = pred + alphas[i] * treePred;
       }
+
+      // vector < vector < unsigned > > revBestTasks; // revBestTasks[k] has indices of iterations where the k-th task was selected
+      // reverseBestTask(revBestTasks);
+      
+      // for(unsigned k = 0; k < ntasks; ++k){
+      //   vector<unsigned> tIdx; // Indices of examples that belong to the k-th task
+      //   for(TaskIteratorType it(tInd, k); it; ++it){
+      //     tIdx.push_back(it.index());
+      //   }
+      //   for(unsigned i = 0; i < revBestTasks[k].size(); ++i){
+      //     unsigned j = revBestTasks[k][i];
+
+      //   }
+      // }
     }
   };
 }

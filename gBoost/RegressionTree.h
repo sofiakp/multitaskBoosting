@@ -395,7 +395,8 @@ namespace GBoost {
       // pred must either have one row per example, or as many rows as sampIdxs. In the former case, the rows not in sampIdx will be 0.
   
       const unsigned N = sampIdxs.size();
-      
+      pred.setZero();
+
       #pragma omp parallel for num_threads(NUM_SEARCH_THREADS)
       for (unsigned i = 0; i < N; ++i){
         unsigned curNode = 0;

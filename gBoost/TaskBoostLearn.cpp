@@ -16,7 +16,7 @@ void check_train_arguments(const mxArray* prhs[]);
 
 void mexFunctionTrain(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
   
-  if (nrhs != 9 || nlhs != 1) {
+  if (nrhs != 9 || nlhs != 2) {
     mexErrMsgTxt("Usage:;"); 
   }
   check_train_arguments(prhs);
@@ -35,16 +35,15 @@ void mexFunctionTrain(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]
   double shrink = getDoubleScalar(prhs[8]);
   
   plhs[0] = mxCreateDoubleMatrix(niter, 1, mxREAL);
-  double* err = mxGetPr(plhs[0]);
-    
-  //mxArray* err_matlab = plhs[0];
-  //Map<VectorXd> err(mxGetPr(err_matlab), , mxGetN(err_matlab));
-  
-  VectorXd err_eigen(niter);
+  Map<VectorXd> err_eigen(mxGetPr(plhs[0]), niter);
+
   TaskTreeBooster<  MappedSparseMatrix<double,ColMajor,long>, Map<MatrixXd>, Map<VectorXd> > booster;
   booster.learn(I, X, R, niter, maxDepth, minNodes, minErr, fracFeat, shrink, err_eigen);
-  
-  for(unsigned i = 0; i < err_eigen.size(); ++i) err[i] = err_eigen(i);
+  // for(unsigned i = 0; i < err_eigen.size(); ++i) err[i] = err_eigen(i);
+
+  plhs[1] = mxCreateDoubleMatrix(X.rows(), 1, mxREAL);
+  Map<VectorXd> pred(mxGetPr(plhs[1]), X.rows());
+  booster.predict(I, X, pred);
 }
 
 void check_train_arguments(const mxArray* prhs[]){
