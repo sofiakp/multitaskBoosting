@@ -93,7 +93,7 @@ for i = start_iter:params.niter
   [min_err, best_task(i)] = min(task_err);
   models{i} = task_models{best_task(i)};
   
-  sel_ind = (tr(:) | ts(:)) & tasks(:, best_task(i));
+  sel_ind = find((tr(:) | ts(:)) & tasks(:, best_task(i)));
   [sel_r sel_c] = ind2sub(size(tr), sel_ind);
   X = [pexp(sel_c, :) scores(sel_r, :)];
   pred_tmp = SQBMatrixPredict(models{i}, single(X));
