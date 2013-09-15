@@ -83,7 +83,7 @@ for i = start_iter:params.niter
     [tr_r tr_c] = ind2sub(size(tr), tr_ind);
     X = [pexp(tr_c, :) scores(tr_r, :)];
     
-    if i == start_iter || any(sel_genes & tasks(:, best_task(i - 1)))
+    if i == start_iter || any(tasks(:, k) & tasks(:, best_task(i - 1)))
       task_models{k} = SQBMatrixTrain(single(X), cexp(tr_ind) - pred(tr_ind), uint32(1), train_params);
     end
     pred_tmp = SQBMatrixPredict(task_models{k}, single(X));
