@@ -16,7 +16,7 @@ void check_train_arguments(const mxArray* prhs[]);
 
 void mexFunctionTrain(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
   
-  if (nrhs != 9 || nlhs != 2) {
+  if (nrhs != 9 || nlhs != 4) {
     mexErrMsgTxt("Usage:;"); 
   }
   check_train_arguments(prhs);
@@ -33,17 +33,33 @@ void mexFunctionTrain(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]
   double minErr = getDoubleScalar(prhs[6]);
   double fracFeat = getDoubleScalar(prhs[7]);
   double shrink = getDoubleScalar(prhs[8]);
-  
-  plhs[0] = mxCreateDoubleMatrix(niter, 1, mxREAL);
-  Map<VectorXd> err_eigen(mxGetPr(plhs[0]), niter);
 
   TaskTreeBooster<  MappedSparseMatrix<double,ColMajor,long>, Map<MatrixXd>, Map<VectorXd> > booster;
-  booster.learn(I, X, R, niter, maxDepth, minNodes, minErr, fracFeat, shrink, err_eigen);
-  // for(unsigned i = 0; i < err_eigen.size(); ++i) err[i] = err_eigen(i);
+  booster.learn(I, I, X, R, niter, maxDepth, minNodes, minErr, fracFeat, shrink, false);
+  // booster.learn(I, I, X, R, niter, maxDepth, minNodes, minErr, fracFeat, shrink, true);
+ 
+  plhs[0] = mxCreateDoubleMatrix(niter, 1, mxREAL);
+  VectorXd trloss = booster.getTrLoss();
+  double* trloss_ptr = mxGetPr(plhs[0]);
+  for(unsigned i = 0; i < niter; ++i) trloss_ptr[i] = trloss(i);
 
-  plhs[1] = mxCreateDoubleMatrix(X.rows(), 1, mxREAL);
-  Map<VectorXd> pred(mxGetPr(plhs[1]), X.rows());
-  booster.predict(I, X, pred);
+  plhs[1] = mxCreateDoubleMatrix(niter, 1, mxREAL);
+  VectorXd tsloss = booster.getTsLoss();
+  double* tsloss_ptr = mxGetPr(plhs[1]);
+  for(unsigned i = 0; i < niter; ++i) tsloss_ptr[i] = tsloss(i);
+
+  plhs[2] = mxCreateDoubleMatrix(X.rows(), 1, mxREAL);
+  VectorXd F = booster.getF();
+  double* F_ptr = mxGetPr(plhs[2]);
+  for(unsigned i = 0; i < X.rows(); ++i) F_ptr[i] = F(i);
+  
+  plhs[3] = mxCreateDoubleMatrix(X.cols(), I.cols(), mxREAL); // This should be nfeat-by-ntasks
+  Map<MatrixXd> imp(mxGetPr(plhs[3]), X.cols(), I.cols());
+  booster.varImportance(imp);
+
+  // plhs[1] = mxCreateDoubleMatrix(X.rows(), 1, mxREAL);
+  // Map<VectorXd> pred(mxGetPr(plhs[1]), X.rows());
+  // booster.predict(I, X, pred);
 }
 
 void check_train_arguments(const mxArray* prhs[]){

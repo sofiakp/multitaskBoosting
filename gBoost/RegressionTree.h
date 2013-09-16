@@ -10,6 +10,9 @@
 #include <iostream>
 #include <limits>
 #include "matlab_utils.h"
+#include <boost/archive/binary_iarchive.hpp>
+#include <boost/archive/binary_oarchive.hpp>
+#include <boost/serialization/vector.hpp>
 
 using namespace std;
 using namespace Eigen;
@@ -18,13 +21,24 @@ namespace GBoost {
   template<typename ValueType, typename IndexType = unsigned int > struct RegressionTreeNode{
     bool isLeaf; // TODO: remove this feature. leftNodeIdx == -1 means leaf
     ValueType value; // Predicted value for leaves, split threshold for interior nodes
-    
+    ValueType err; // Sum of squares (training) error for the examples of this node.
+
     int leftNodeIdx;
     int rightNodeIdx;
     
     IndexType featureIdx; // Index of the feature that defines the split, 0 for leaves.
     
-    RegressionTreeNode() : isLeaf(true), value(0), leftNodeIdx(-1), rightNodeIdx(-1), featureIdx(0){}
+    RegressionTreeNode() : isLeaf(true), value(0), err(0), leftNodeIdx(-1), rightNodeIdx(-1), featureIdx(0){}
+
+    template<typename Archive>
+    void serialize(Archive & ar, const unsigned int version){
+      ar & isLeaf;
+      ar & value;
+      ar & err;
+      ar & leftNodeIdx;
+      ar & rightNodeIdx;
+      ar & featureIdx;
+    }
   };
   
   struct RegressionStackEntry {
@@ -87,7 +101,6 @@ namespace GBoost {
    * ResponseMatType is the type of Eigen::Vector. This is the type of the responses (and of the weights).
    */
   template< typename FeatureDerived, typename ResponseDerived > class RegressionTree {
-  public:
     typedef typename FeatureDerived::Scalar ValueType; // Type of the features (eg. double)
     typedef typename FeatureDerived::Index IndexType; // Type of indices in the features (eg. unsigned)
     typedef typename ResponseDerived::Scalar ResponseValueType; // Type of the responses 
@@ -97,27 +110,28 @@ namespace GBoost {
     
   private:
     vector<NodeType> nodes;
-    
-  public:
-    vector<NodeType>& getNodes() const { return nodes; }
-    
-  public:
-    
-    unsigned size() const {
-      return nodes.size();
+
+    friend class boost::serialization::access;
+    template<class Archive>
+    void serialize(Archive & ar, const unsigned int version){
+      ar & nodes;
+      // for(unsigned i = 0; i < nodes.size(); ++i) ar & nodes[i];
     }
     
-    RegressionTree<FeatureDerived, ResponseDerived>(){
-      cout << "Created tree" << endl;
-    }
+  public:
+    const vector<NodeType>& getNodes() const { return nodes; }
     
+    unsigned size() const { return nodes.size(); }
+    
+    RegressionTree<FeatureDerived, ResponseDerived>(){}
+
     mxArray *saveToMatlab() const {
-      const char *fieldNames[] = { "isLeaf", "value", "leftNodeIdx", "rightNodeIdx", "featIdx"};
+      const char *fieldNames[] = { "isLeaf", "value", "err", "leftNodeIdx", "rightNodeIdx", "featIdx"};
       
       mwSize dims[1]; dims[0] = nodes.size();
       
       // create array
-      mxArray *ret = mxCreateStructArray(1, dims, 5, fieldNames);
+      mxArray *ret = mxCreateStructArray(1, dims, 6, fieldNames);
       for (unsigned i=0; i < nodes.size(); ++i) {
         mxArray *isLeaf = mxCreateNumericMatrix(1, 1, mxUINT8_CLASS, mxREAL);
         ((unsigned char *)mxGetData(isLeaf))[0] = nodes[i].isLeaf?1:0;
@@ -126,6 +140,10 @@ namespace GBoost {
         mxArray *value = mxCreateNumericMatrix(1,1, matlabClassID<ValueType>(), mxREAL);
         ((ValueType *)mxGetData(value))[0] = nodes[i].value;
         mxSetField( ret, i, "value", value );
+
+        mxArray *err = mxCreateNumericMatrix(1,1, matlabClassID<ValueType>(), mxREAL);
+        ((ValueType *)mxGetData(value))[0] = nodes[i].err;
+        mxSetField( ret, i, "err", err);
         
         mxArray *leftNodeIdx = mxCreateNumericMatrix(1,1, matlabClassID<int>(), mxREAL);
         ((int *)mxGetData(leftNodeIdx))[0] = nodes[i].leftNodeIdx;
@@ -161,6 +179,13 @@ namespace GBoost {
           return false;
         }
         nodes[i].value = ((ValueType *)mxGetData(value))[0];
+
+        mxArray *err = mxGetField(data, i, "err");
+        if (mxGetClassID(err) != matlabClassID<ValueType>()) {
+          printf("Error type mismatch");
+          return false;
+        }
+        nodes[i].err = ((ValueType *)mxGetData(err))[0];
         
         mxArray *leftNodeIdx = mxGetField(data, i, "leftNodeIdx");
         if (mxGetClassID(leftNodeIdx) != matlabClassID<int>()) {
@@ -205,8 +230,8 @@ namespace GBoost {
      * The stump is written in stumpInfo.
      */
      ResponseValueType learnSingleStump(const MatrixBase<FeatureDerived> &X, 
-             const MatrixBase<ResponseDerived> &R, const MatrixBase<ResponseDerived> &W,
-             vector<unsigned> &idxs, IndexType fidx, RegStumpInfo<ResponseValueType> &stumpInfo) { //vector<unsigned>
+					const MatrixBase<ResponseDerived> &R, const MatrixBase<ResponseDerived> &W,
+					vector<unsigned> &idxs, IndexType fidx, RegStumpInfo<ResponseValueType> &stumpInfo) {
       
       const unsigned N = idxs.size(); // number of examples that will be used for training.
       
@@ -231,7 +256,7 @@ namespace GBoost {
       
       ResponseValueType err1 = 0;
       ResponseValueType err2 = y2 * y2 * sumW2 + sumWRSq2 - 2*y2*sumWR2;
-      
+
       stumpInfo.setValues(true, 0, err1, err2, y1, y2, 0, N);
       
       // The node is pure if the average error is very small or all the values for the feature are (almost) the same.
@@ -268,7 +293,6 @@ namespace GBoost {
           //break;
         //}
       }
-      stumpInfo.printInfo();
       return stumpInfo.err1 + stumpInfo.err2;
     }
     
@@ -299,9 +323,23 @@ namespace GBoost {
       all.depth = 0;
       nodeStack.push(all);
       
-      NodeType root;
-      nodes.push_back(root);
-      
+      NodeType root;      
+      // Compute the total weighted loss at the root
+      ResponseValueType sumW2, y2, sumWR2, sumWRSq2;
+      sumW2 = y2 = sumWR2 = sumWRSq2 = 0;
+      for (unsigned i = 0; i < idxs.size(); ++i) {
+        const ResponseValueType w = W(idxs[i]);
+        const ResponseValueType r = R(idxs[i]);
+        
+        y2 += r;
+        sumW2 += w;
+        sumWR2 += w * r;
+        sumWRSq2 += w * r * r;
+      }
+      y2 /= idxs.size();
+      root.err = y2 * y2 * sumW2 + sumWRSq2 - 2*y2*sumWR2;
+      nodes.push_back(root); 
+
       Matrix<IndexType, Dynamic, 1> selFeat(nfeat); // Will store the indices of features to test
       vector<IndexType> tmp(X.cols());
       for(unsigned i = 0; i < X.cols(); ++i) tmp[i] = i;
@@ -309,7 +347,6 @@ namespace GBoost {
       while(!nodeStack.empty()) {
         RegressionStackEntry top = nodeStack.top();
         nodeStack.pop();
-        cout << "Pop " << top.nodeIdx << endl;
           
         if(nfeat == X.cols())
           selFeat.setLinSpaced(nfeat, 0, nfeat - 1); // selFeat will be 0,1,2,...,nfeat-1.
@@ -318,7 +355,6 @@ namespace GBoost {
           tmp.resize(nfeat);
           for(unsigned i = 0; i < nfeat; ++i) selFeat(i) = tmp[i];
         }
-        cout << selFeat << endl;
         
         vector< RegStumpInfo< ValueType > > stumpResults(nfeat); // Store the results for all possible splits of this node
         Matrix< ResponseValueType, Dynamic, 1 > stumpErrs(nfeat);
@@ -327,14 +363,12 @@ namespace GBoost {
         for (unsigned f = 0; f < nfeat; ++f) {
           stumpErrs(f) = learnSingleStump(X, R, W, top.idxList, selFeat(f), stumpResults[f]);
         }
-        cout << "Errors " << stumpErrs << endl;
         
         IndexType minCol;
         stumpErrs.minCoeff(&minCol);
         RegStumpInfo<ResponseValueType> minStump = stumpResults[minCol];
         minCol = selFeat(minCol);
-        cout << "Best stump " << endl;
-        minStump.printInfo(); 
+        // minStump.printInfo();	
      
         if (minStump.isPure) {
           nodes[top.nodeIdx].isLeaf = true;
@@ -342,6 +376,8 @@ namespace GBoost {
           // No need to add children in the stack or the tree.
         }else{
           NodeType leftNode, rightNode;
+	  leftNode.err = minStump.err1;
+	  rightNode.err = minStump.err2;
           nodes[top.nodeIdx].isLeaf = false;
           nodes[top.nodeIdx].featureIdx = minCol;
           nodes[top.nodeIdx].value = minStump.threshold;
@@ -349,7 +385,7 @@ namespace GBoost {
           nodes.push_back(leftNode);
           nodes[top.nodeIdx].rightNodeIdx = nodes.size();
           nodes.push_back(rightNode);
-          
+
           bool leftIsLeaf = top.depth >= maxDepth || minStump.n1 < minNodeSize || minStump.err1 / minStump.n1 < minChildErr;
           bool rightIsLeaf = top.depth >= maxDepth || minStump.n2 < minNodeSize || minStump.err2 / minStump.n2 < minChildErr;
           
@@ -386,18 +422,18 @@ namespace GBoost {
           }
           //cout << "Left list n=" << leftEntry.idxList.size() << ", right list n=" << rightEntry.idxList.size() << endl;
         }
-        cout << "Stack size " << nodeStack.size() << " nodes " << nodes.size() << endl;
       }
     }
     
     template < typename FeatureDerived2, typename ResponseDerived2 >
-    void predict(const MatrixBase<FeatureDerived2> &X, vector<unsigned> &sampIdxs, MatrixBase<ResponseDerived2> &pred) const {
+    void predict(const MatrixBase<FeatureDerived2> &X, vector<unsigned> &sampIdxs, 
+		 MatrixBase<ResponseDerived2> &pred, unsigned nt = NUM_SEARCH_THREADS) const {
       // pred must either have one row per example, or as many rows as sampIdxs. In the former case, the rows not in sampIdx will be 0.
   
       const unsigned N = sampIdxs.size();
       pred.setZero();
 
-      #pragma omp parallel for num_threads(NUM_SEARCH_THREADS)
+      #pragma omp parallel for num_threads(nt)
       for (unsigned i = 0; i < N; ++i){
         unsigned curNode = 0;
         unsigned j = (pred.rows() == X.rows())? sampIdxs[i] : i; 
@@ -414,6 +450,31 @@ namespace GBoost {
         }
       }
     }
+
+    void varImportance(vector<ValueType>& imp) const{
+      unsigned nnodes = nodes.size();
+      for(unsigned i = 0; i < nnodes; ++i){
+     	if(!nodes[i].isLeaf){
+	  unsigned f = nodes[i].featureIdx;
+	  if(f >= imp.size()){
+	    imp.resize(f + 1, 0.0);
+	  }
+     	  imp[f] += nodes[i].err - nodes[nodes[i].leftNodeIdx].err - nodes[nodes[i].rightNodeIdx].err;
+     	}
+      }
+     }
+
+    template <typename Derived>
+    void varImportance(MatrixBase<Derived>& imp) const{
+      unsigned nnodes = nodes.size();
+      for(unsigned i = 0; i < nnodes; ++i){
+     	if(!nodes[i].isLeaf){
+	  unsigned f = nodes[i].featureIdx;
+	  assert(f < imp.size()); // imp MUST be of the right size
+     	  imp(f) += nodes[i].err - nodes[nodes[i].leftNodeIdx].err - nodes[nodes[i].rightNodeIdx].err;
+     	}
+      }
+     }
   };
 }
 
