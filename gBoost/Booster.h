@@ -1,15 +1,29 @@
 #ifndef _TASK_TREE_BOOSTER_H_
 #define _TASK_TREE_BOOSTER_H_
 
-#include <vector>
+#include <sys/time.h>
+#include <fstream>
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 #include "RegressionTree.h"
 #include <assert.h>
-#include <boost/archive/binary_oarchive.hpp>
+#include <boost/archive/text_iarchive.hpp>
+#include <boost/archive/text_oarchive.hpp>
+#include <boost/serialization/vector.hpp>
+#include <boost/serialization/serialization.hpp>
+#include "matlab_eigen.h"
 
 using namespace Eigen;
 using namespace std;
+
+// namespace boost{
+//   template<class Archive, typename _Scalar, int _Rows, int _Cols, int _Options, int _MaxRows, int _MaxCols>
+//   inline void serialize(Archive & ar, Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols> & t, 
+// 			const unsigned int version){
+//     for(size_t i = 0; i < t.size(); ++i)
+//       ar & t.data()[i];
+//   }
+// }
 
 namespace GBoost {
   template <typename ValueType> struct TaskTreeBoosterParams {
@@ -18,7 +32,16 @@ namespace GBoost {
     ValueType minChildErr;
     double fracFeat;
     double shrink;
-    
+
+    template<class Archive>
+    void serialize(Archive &ar, const unsigned int version){
+      ar & maxDepth;
+      ar & minNodeSize;
+      ar & minChildErr;
+      ar & fracFeat;
+      ar & shrink;
+    }
+
     TaskTreeBoosterParams(){}
 
     TaskTreeBoosterParams(unsigned maxDepthIn, unsigned minNodeSizeIn, 
@@ -33,6 +56,11 @@ namespace GBoost {
     
     bool operator!=(const TaskTreeBoosterParams &other) const {
       return !(*this == other);
+    }
+
+    void print(){
+      cout << "maxDepth:" << maxDepth << ", minNodeSize:" << minNodeSize << ", minChildErr:" << minChildErr
+	   << ", fracFeat:" << fracFeat << ", shrink:" << shrink << endl;
     }
   };
 
@@ -49,7 +77,6 @@ namespace GBoost {
     
     typedef RegressionTree< FeatureDerived, ResponseValueVectorType > LearnerType;
   private:
-    // TODO: add niter, F, and err as members
     vector < vector < unsigned > > taskIdx; // same information as taskInd, but list of indices of examples per task
     vector < vector < unsigned > > taskOvIdx; // for each task, list of indices of overlapping tasks
     vector<LearnerType> learners; // learner for each boosting round
@@ -60,6 +87,22 @@ namespace GBoost {
     ResponseValueVectorType trloss; ResponseValueVectorType tsloss;
     ResponseValueVectorType F;
     TaskTreeBoosterParams<ValueType> learnParams;
+
+    friend class boost::serialization::access;
+    template<class Archive>
+    void serialize(Archive & ar, const unsigned int version){
+      ar & ntasks;
+      ar & taskIdx;
+      ar & taskOvIdx;
+      ar & learners;
+      ar & alphas;
+      ar & bestTasks;
+      ar & nfeat;
+      ar & trloss; 
+      ar & tsloss;
+      ar & F;
+      ar & learnParams;
+    }
 
     template < typename Derived>
     unsigned getTaskIdx(const SparseMatrixBase<TaskDerived> &tInd, vector < vector < unsigned > > &tIdx, MatrixBase<Derived> &taskVec){
@@ -120,6 +163,10 @@ namespace GBoost {
       }
     }
     
+    long elapsedTime(timeval& start, timeval& end){
+      return (long)((end.tv_sec  - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000.0 + 0.5);
+    }
+
   public:
     const vector<LearnerType>& getLearners() const{
       return learners;
@@ -142,6 +189,28 @@ namespace GBoost {
 
     TaskTreeBooster(){}
     
+    void printInfo(){
+      cout << "Learning parameters" << endl;
+      learnParams.print();
+      for(unsigned i = 0; i < bestTasks.size(); ++i){
+	cout << "Iter " << i << ", task " << bestTasks[i] << ", loss (tr,ts) " << trloss[i] << ", " << tsloss[i] << endl;
+	learners[i].printInfo();
+      }
+    }
+
+    void store(const char* filename) const{
+      std::ofstream ofs(filename);
+      boost::archive::text_oarchive oa(ofs);
+      oa << (*this);
+      ofs.flush();
+    }
+
+    void load(const char* filename){
+      std::ifstream ifs(filename);
+      boost::archive::text_iarchive ia(ifs);
+      ia >> (*this);
+    }
+
     template < typename OtherDerived>
     void setPseudoResiduals(const MatrixBase<ResponseDerived> &Y, const MatrixBase<OtherDerived> &F, 
 			    MatrixBase<OtherDerived> &W, MatrixBase<OtherDerived> &R){
@@ -161,10 +230,14 @@ namespace GBoost {
 
     void learn(const SparseMatrixBase<TaskDerived> &taskInd, const SparseMatrixBase<TaskDerived> &testInd,
 	       const MatrixBase<FeatureDerived> &X, const MatrixBase<ResponseDerived> &Y, unsigned niter, unsigned maxDepth, unsigned minNodeSize, 
-	       ValueType minChildErr, double fracFeat, double shrink, bool resume){
+	       ValueType minChildErr, double fracFeat, double shrink, bool resume, const char* filename){
 
       unsigned startIter;
       unsigned nexamples = X.rows();
+      timeval start, end;
+      cout << "Initializing..." << endl;
+      gettimeofday(&start, NULL);
+
       if(resume){
 	startIter = bestTasks.size();
 	if(niter <= startIter){
@@ -220,8 +293,12 @@ namespace GBoost {
       
       vector< unsigned > allTasks(ntasks); // This will be just a vector 0,1,...,ntasks-1
       for(unsigned i = 0; i < ntasks; ++i) allTasks[i] = i;
-      
+
+      gettimeofday(&end, NULL);
+      cout << "Time elapsed: " << elapsedTime(start, end) << " ms" << endl;
+
       for(unsigned iter = startIter; iter < niter; ++iter){
+	gettimeofday(&end, NULL);
       	cout << "Boosting iter " << iter << endl;
 
 	setPseudoResiduals(Y, F, W, R);
@@ -231,9 +308,9 @@ namespace GBoost {
         cout << "# Tasks " << todoTasks.size() << endl;
         
         // Iterate through the tasks whose optimal model has changed since the last iteration
-        //#pragma omp parallel for num_threads(NUM_BOOST_THREADS)
+        #pragma omp parallel for num_threads(NUM_BOOST_THREADS)
         for(unsigned t = 0; t < todoTasks.size(); ++t){
-          cout << "Learner " << t << endl;
+          // cout << "Learner " << t << endl;
           taskLearners[todoTasks[t]].learn(X, R, W, maxDepth, minNodeSize, minChildErr, taskIdx[todoTasks[t]], fracFeat);
           ResponseValueVectorType taskPred(nexamples); 
           taskLearners[todoTasks[t]].predict(X, taskIdx[todoTasks[t]], taskPred, 1); // taskPred will be 0 when taskIdx is 0
@@ -260,6 +337,10 @@ namespace GBoost {
         trloss(iter) = oldErr - taskErr(bestTasks[iter]);
 	tsloss(iter) = computeLoss(Y, F, ts_sp);
 	cout << "Best task " << bestTasks[iter] << ", Avg loss " << trloss(iter) / ntr << " " << tsloss(iter) / nts << endl;
+	
+	store(filename);
+	gettimeofday(&end, NULL);
+	cout << "Time elapsed: " << elapsedTime(start, end) << " ms" << endl;
       }
     }
     

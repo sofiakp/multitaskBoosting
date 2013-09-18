@@ -5,6 +5,8 @@
 #include "Booster.h"
 #include "matlab_utils.h"
 #include "matlab_eigen.h"
+#include <boost/archive/text_iarchive.hpp>
+#include <boost/archive/text_oarchive.hpp>
 
 #define EIGEN_DONT_PARALLELIZE
 
@@ -16,26 +18,28 @@ void check_train_arguments(const mxArray* prhs[]);
 
 void mexFunctionTrain(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
   
-  if (nrhs != 9 || nlhs != 4) {
-    mexErrMsgTxt("Usage:;"); 
+  if (nrhs != 11 || nlhs != 4) {
+    mexErrMsgTxt("Usage: task_boost_learn(I, Itest, X, R, niter, maxDepth, minNodes, minErr, fracFeat, shrink, resume, outfile)"); 
   }
   check_train_arguments(prhs);
   
   const MappedSparseMatrix<double,ColMajor,long> I = spm_matlab2eigen_mapped(prhs[0]);
-  const mxArray* X_matlab = prhs[1];
-  const mxArray* R_matlab = prhs[2];
+  const MappedSparseMatrix<double,ColMajor,long> Itest = spm_matlab2eigen_mapped(prhs[1]);  
+  const mxArray* X_matlab = prhs[2];
+  const mxArray* R_matlab = prhs[3];
   Map<MatrixXd> X(mxGetPr(X_matlab), mxGetM(X_matlab), mxGetN(X_matlab));
   Map<VectorXd> R(mxGetPr(R_matlab), mxGetM(R_matlab), mxGetN(R_matlab));
   
-  unsigned int niter = (unsigned int)getDoubleScalar(prhs[3]);
-  unsigned int maxDepth = (unsigned int)getDoubleScalar(prhs[4]);
-  unsigned int minNodes = (unsigned int)getDoubleScalar(prhs[5]);
-  double minErr = getDoubleScalar(prhs[6]);
-  double fracFeat = getDoubleScalar(prhs[7]);
-  double shrink = getDoubleScalar(prhs[8]);
+  unsigned int niter = (unsigned int)getDoubleScalar(prhs[4]);
+  unsigned int maxDepth = (unsigned int)getDoubleScalar(prhs[5]);
+  unsigned int minNodes = (unsigned int)getDoubleScalar(prhs[6]);
+  double minErr = getDoubleScalar(prhs[7]);
+  double fracFeat = getDoubleScalar(prhs[8]);
+  double shrink = getDoubleScalar(prhs[9]);
+  char* filename = mxArrayToString(prhs[10]);
 
   TaskTreeBooster<  MappedSparseMatrix<double,ColMajor,long>, Map<MatrixXd>, Map<VectorXd> > booster;
-  booster.learn(I, I, X, R, niter, maxDepth, minNodes, minErr, fracFeat, shrink, false);
+  booster.learn(I, Itest, X, R, niter, maxDepth, minNodes, minErr, fracFeat, shrink, false, filename);
   // booster.learn(I, I, X, R, niter, maxDepth, minNodes, minErr, fracFeat, shrink, true);
  
   plhs[0] = mxCreateDoubleMatrix(niter, 1, mxREAL);
@@ -57,6 +61,12 @@ void mexFunctionTrain(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]
   Map<MatrixXd> imp(mxGetPr(plhs[3]), X.cols(), I.cols());
   booster.varImportance(imp);
 
+  // booster.printInfo();
+  // cout << "########### AFTER ARCHIVING ###########" << endl;
+  // TaskTreeBooster<  MappedSparseMatrix<double,ColMajor,long>, Map<MatrixXd>, Map<VectorXd> > booster2;
+  // booster2.load(filename);
+  // booster2.printInfo();
+
   // plhs[1] = mxCreateDoubleMatrix(X.rows(), 1, mxREAL);
   // Map<VectorXd> pred(mxGetPr(plhs[1]), X.rows());
   // booster.predict(I, X, pred);
@@ -64,11 +74,14 @@ void mexFunctionTrain(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]
 
 void check_train_arguments(const mxArray* prhs[]){
   const mxArray* I_matlab = prhs[0];
-  const mxArray* X_matlab = prhs[1];
-  const mxArray* R_matlab = prhs[2];
+  const mxArray* Itest_matlab = prhs[1];  
+  const mxArray* X_matlab = prhs[2];
+  const mxArray* R_matlab = prhs[3];
    
   int irows = mxGetM(I_matlab);
   int icols = mxGetN(I_matlab);
+  int irows2 = mxGetM(Itest_matlab);
+  int icols2 = mxGetN(Itest_matlab);  
   int xrows = mxGetM(X_matlab);
   int xcols = mxGetN(X_matlab);
   int rrows = mxGetM(R_matlab);
@@ -92,14 +105,27 @@ void check_train_arguments(const mxArray* prhs[]){
   if (icols == 0) {
     mexErrMsgTxt("Number of tasks is 0");
   }
-  
-  const mxArray* niter_matlab = prhs[3];
-  const mxArray* maxDepth_matlab = prhs[4];
-  const mxArray* minNodes_matlab = prhs[5];
-  const mxArray* minErr_matlab = prhs[6];
-  const mxArray* fracFeat_matlab = prhs[7];
-  const mxArray* shrink_matlab = prhs[8];
-  
+  if (irows2 != xrows) {
+    mexErrMsgTxt("X and Itest must have the same number of rows");
+  }
+  if (icols2 == 0) {
+    mexErrMsgTxt("Number of test tasks is 0");
+  }
+  if(!mxIsSparse(I_matlab)){
+    mexErrMsgTxt("I must be sparse");
+  }
+  if(!mxIsSparse(Itest_matlab)){
+    mexErrMsgTxt("Itest must be sparse");
+  }
+
+  const mxArray* niter_matlab = prhs[4];
+  const mxArray* maxDepth_matlab = prhs[5];
+  const mxArray* minNodes_matlab = prhs[6];
+  const mxArray* minErr_matlab = prhs[7];
+  const mxArray* fracFeat_matlab = prhs[8];
+  const mxArray* shrink_matlab = prhs[9];
+  const mxArray* filename_matlab = prhs[10];
+
   if (!isIntegerScalar(niter_matlab) || getDoubleScalar(niter_matlab) <= 0){
     mexErrMsgTxt("niter must be a positive integer");
   }
@@ -117,6 +143,9 @@ void check_train_arguments(const mxArray* prhs[]){
   }
   if (!isDoubleScalar(shrink_matlab) || getDoubleScalar(shrink_matlab) <= 0){
     mexErrMsgTxt("shrink must be a positive real");
+  }
+  if(!mxIsChar(filename_matlab)){
+    mexErrMsgTxt("filename must be a string");
   }
 }
 

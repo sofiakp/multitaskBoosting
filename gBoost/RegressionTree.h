@@ -8,6 +8,7 @@
 #include <Eigen/Dense>
 #include <algorithm>
 #include <iostream>
+#include <fstream>
 #include <limits>
 #include "matlab_utils.h"
 #include <boost/archive/binary_iarchive.hpp>
@@ -115,7 +116,6 @@ namespace GBoost {
     template<class Archive>
     void serialize(Archive & ar, const unsigned int version){
       ar & nodes;
-      // for(unsigned i = 0; i < nodes.size(); ++i) ar & nodes[i];
     }
     
   public:

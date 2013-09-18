@@ -22,9 +22,9 @@ mot_names = mot_names(sel_mot);
 nmot = sum(sel_mot);
 
 load(files.fold_file);
-load(fullfile(clust_dir, 'clusters.mat'));
 
 for f = 1:length(folds)
+  load(fullfile(clust_dir, ['clusters', num2str(folds(f)), '.mat']));
   outfile = [outfile_root, '.', num2str(folds(f)), '.mat'];
   tr = trainSets{folds(f)};
   ts = testSets{folds(f)};
@@ -43,6 +43,7 @@ end
 % This assumes tasks over both the genes and the experiments (so
 % bi-clusters).
 function naive_task_boost2(tasks, cexp, pexp, scores, tr, ts, params, train_params, outfile, resume)
+
 ntasks = size(tasks, 2);
 
 if resume
@@ -75,15 +76,19 @@ end
 task_models = cell(ntasks, 1);
 task_err = inf(ntasks, 1);
 
+all_ind = find(tr | ts); % The rows of tasks correspond to these indices of cexp
+all_tr_ind = ismember(find(tr), all_ind); % Indicators of rows of tasks that correspond to training examples
+all_ts_ind = ~all_tr_ind;
+
 for i = start_iter:params.niter
   
-  for k = 2:ntasks,
-    tr_ind = find(tr(:) & tasks(:, k));
-    other_tr_ind = find(tr(:) & ~tasks(:, k));
+  for k = 3:ntasks,
+    tr_ind = all_ind(all_tr_ind & tasks(:, k));
+    other_tr_ind = all_ind(all_tr_ind & ~tasks(:, k));
     [tr_r tr_c] = ind2sub(size(tr), tr_ind);
     X = [pexp(tr_c, :) scores(tr_r, :)];
     
-    if i == start_iter || any(tasks(:, k) & tasks(:, best_task(i - 1)))
+    if i == start_iter || any(tasks(:, k) & tasks(:, best_task(i - 1)) & all_tr_ind)
       task_models{k} = SQBMatrixTrain(single(X), cexp(tr_ind) - pred(tr_ind), uint32(1), train_params);
     end
     pred_tmp = SQBMatrixPredict(task_models{k}, single(X));
@@ -93,7 +98,7 @@ for i = start_iter:params.niter
   [min_err, best_task(i)] = min(task_err);
   models{i} = task_models{best_task(i)};
   
-  sel_ind = find((tr(:) | ts(:)) & tasks(:, best_task(i)));
+  sel_ind = all_ind(tasks(:, best_task(i)));
   [sel_r sel_c] = ind2sub(size(tr), sel_ind);
   X = [pexp(sel_c, :) scores(sel_r, :)];
   pred_tmp = SQBMatrixPredict(models{i}, single(X));

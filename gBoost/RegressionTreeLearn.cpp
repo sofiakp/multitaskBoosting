@@ -1,5 +1,4 @@
 #include <iostream>
-#include <fstream>
 #include <vector>
 #include <numeric>
 #include <algorithm>
@@ -8,8 +7,6 @@
 #include <Eigen/Dense>
 #include "RegressionTree.h"
 #include "matlab_utils.h"
-#include <boost/archive/text_iarchive.hpp>
-#include <boost/archive/text_oarchive.hpp>
 
 #define EIGEN_DONT_PARALLELIZE
 
@@ -47,19 +44,6 @@ void mexFunctionTrain(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]
   RegressionTree< Map<MatrixXd>, Map<VectorXd> > tree;
   tree.learn(X, R, W, maxDepth, minNodes, minErr, idxs, fracFeat);
   tree.printInfo();
-
-  std::ofstream ofs("/home/sofiakp/test.bin");
-  boost::archive::text_oarchive oa(ofs);
-  oa << tree;
-  ofs.flush();
-
-  std::ifstream ifs("/home/sofiakp/test.bin");
-  boost::archive::text_iarchive ia(ifs);
-  RegressionTree< Map<MatrixXd>, Map<VectorXd> > tree2;
-  ia >> tree2;
-  
-  cout << "After archiving" << endl;
-  tree2.printInfo();
 
   plhs[0] = tree.saveToMatlab();
 
