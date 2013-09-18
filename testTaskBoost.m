@@ -77,7 +77,7 @@ task_models = cell(ntasks, 1);
 task_err = inf(ntasks, 1);
 
 all_ind = find(tr | ts); % The rows of tasks correspond to these indices of cexp
-all_tr_ind = ismember(find(tr), all_ind); % Indicators of rows of tasks that correspond to training examples
+all_tr_ind = ismember(all_ind, find(tr)); % Indicators of rows of tasks that correspond to training examples
 all_ts_ind = ~all_tr_ind;
 
 for i = start_iter:params.niter
