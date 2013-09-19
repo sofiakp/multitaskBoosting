@@ -36,13 +36,13 @@ for f = 1:length(folds)
     warning('Warning:testTaskBoost', 'Output file does not exist, setting resume to false');
     resume = false;
   end
-  naive_task_boost2(tasks, cexp, pexp, scores, tr, ts, params, train_params, outfile, resume);
+  naive_task_boost2(tasks, levels, cexp, pexp, scores, tr, ts, params, train_params, outfile, resume);
 end
 end
 
 % This assumes tasks over both the genes and the experiments (so
 % bi-clusters).
-function naive_task_boost2(tasks, cexp, pexp, scores, tr, ts, params, train_params, outfile, resume)
+function naive_task_boost2(tasks, levels, cexp, pexp, scores, tr, ts, params, train_params, outfile, resume)
 
 ntasks = size(tasks, 2);
 
@@ -88,7 +88,8 @@ for i = start_iter:params.niter
     [tr_r tr_c] = ind2sub(size(tr), tr_ind);
     X = [pexp(tr_c, :) scores(tr_r, :)];
     
-    if i == start_iter || any(tasks(:, k) & tasks(:, best_task(i - 1)) & all_tr_ind)
+    if i == start_iter || (any(tasks(:, k) & tasks(:, best_task(i - 1)) & all_tr_ind) && ...
+        (levels(k) == levels(best_task(i - 1) || levels(k) == levels(best_task(i - 1)) + 1)))
       task_models{k} = SQBMatrixTrain(single(X), cexp(tr_ind) - pred(tr_ind), uint32(1), train_params);
     end
     pred_tmp = SQBMatrixPredict(task_models{k}, single(X));
