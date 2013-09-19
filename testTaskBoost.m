@@ -82,7 +82,7 @@ all_ts_ind = ~all_tr_ind;
 
 for i = start_iter:params.niter
   
-  for k = 3:ntasks,
+  for k = 1:ntasks,
     tr_ind = all_ind(all_tr_ind & tasks(:, k));
     other_tr_ind = all_ind(all_tr_ind & ~tasks(:, k));
     [tr_r tr_c] = ind2sub(size(tr), tr_ind);
@@ -93,7 +93,11 @@ for i = start_iter:params.niter
       task_models{k} = SQBMatrixTrain(single(X), cexp(tr_ind) - pred(tr_ind), uint32(1), train_params);
     end
     pred_tmp = SQBMatrixPredict(task_models{k}, single(X));
-    task_err(k) = sum((pred(other_tr_ind) - cexp(other_tr_ind)).^2) + sum((pred_tmp + pred(tr_ind) - cexp(tr_ind)).^2);
+    if i == start_iter || levels(k) == levels(best_task(i - 1) || levels(k) == levels(best_task(i - 1)) + 1)
+      task_err(k) = sum((pred(other_tr_ind) - cexp(other_tr_ind)).^2) + sum((pred_tmp + pred(tr_ind) - cexp(tr_ind)).^2);
+    elseif i > start_iter
+      task_err(k) = Inf;
+    end
   end
   
   [min_err, best_task(i)] = min(task_err);
