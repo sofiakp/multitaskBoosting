@@ -134,8 +134,8 @@ namespace GBoost {
       return ntasks;
     }
 
-    template <typename Derived>
-    void readTasks(const SparseMatrixBase<TaskDerived> &taskInd, MatrixBase<Derived> &tr){
+    template <typename Derived, typename Derived2>
+    void readTasks(const SparseMatrixBase<TaskDerived> &taskInd, MatrixBase<Derived> &tr, const MatrixBase<Derived2> &taskOv){
       
       ntasks = getTaskIdx(taskInd, taskIdx, tr);
 
@@ -149,18 +149,25 @@ namespace GBoost {
       }
 
       for(unsigned i = 0; i < ntasks; ++i){
-       	taskOvIdx[i].push_back(i);
-        for(unsigned j = i + 1; j < ntasks; ++j){
-          vector<unsigned> inter(max(taskIdx[i].size(), taskIdx[j].size()));
-          // taskIdx[i] is sorted. interIt will be a pointer to the last position of the intersection
-          vector<unsigned>::iterator interIt = set_intersection(taskIdx[i].begin(), taskIdx[i].end(), 
-								taskIdx[j].begin(), taskIdx[j].end(), inter.begin());
-          if(inter.begin() != interIt){ // Intersection is not empty
-            taskOvIdx[i].push_back(j);
-            taskOvIdx[j].push_back(i);
-          }
-        }
+	for(unsigned j = 0; j < ntasks; ++j){
+	  if(taskOv(i, j) > 0) taskOvIdx[i].push_back(j);
+	}
       }
+
+      // for(unsigned i = 0; i < ntasks; ++i){
+      //  	taskOvIdx[i].push_back(i);
+      //   for(unsigned j = i + 1; j < ntasks; ++j){
+      // 	  if(abs(levels[i] - levels[j]) > 1) continue;
+      //     vector<unsigned> inter(max(taskIdx[i].size(), taskIdx[j].size()));
+      //     // taskIdx[i] is sorted. interIt will be a pointer to the last position of the intersection
+      //     vector<unsigned>::iterator interIt = set_intersection(taskIdx[i].begin(), taskIdx[i].end(), 
+      // 								taskIdx[j].begin(), taskIdx[j].end(), inter.begin());
+      //     if(inter.begin() != interIt){ // Intersection is not empty
+      //       taskOvIdx[i].push_back(j);
+      //       taskOvIdx[j].push_back(i);
+      //     }
+      //   }
+      // }
     }
     
     long elapsedTime(timeval& start, timeval& end){
@@ -228,7 +235,8 @@ namespace GBoost {
       return (ind.cwiseProduct(Y - F)).cwiseAbs2().sum();
     }
 
-    void learn(const SparseMatrixBase<TaskDerived> &taskInd, const SparseMatrixBase<TaskDerived> &testInd,
+    template < typename Derived2 >
+    void learn(const SparseMatrixBase<TaskDerived> &taskInd, const SparseMatrixBase<TaskDerived> &testInd, const MatrixBase<Derived2> &taskOv,
 	       const MatrixBase<FeatureDerived> &X, const MatrixBase<ResponseDerived> &Y, unsigned niter, unsigned maxDepth, unsigned minNodeSize, 
 	       ValueType minChildErr, double fracFeat, double shrink, bool resume, const char* filename){
 
@@ -261,10 +269,12 @@ namespace GBoost {
       assert(taskInd.outerSize() == testInd.outerSize());
       assert(taskInd.innerSize() == testInd.innerSize());
       assert(taskInd.innerSize() == X.rows());
+      assert(taskOv.rows() == taskInd.outerSize());
+      assert(taskOv.cols() == taskInd.outerSize());
       assert(X.rows() == Y.rows());
 
       VectorXd tr(nexamples);
-      readTasks(taskInd, tr);
+      readTasks(taskInd, tr, taskOv);
       const SparseMatrix<double, ColMajor, long> tr_sp = tr.sparseView();
       learners.reserve(niter);
       alphas.reserve(niter);
@@ -298,7 +308,7 @@ namespace GBoost {
       cout << "Time elapsed: " << elapsedTime(start, end) << " ms" << endl;
 
       for(unsigned iter = startIter; iter < niter; ++iter){
-	gettimeofday(&end, NULL);
+	gettimeofday(&start, NULL);
       	cout << "Boosting iter " << iter << endl;
 
 	setPseudoResiduals(Y, F, W, R);

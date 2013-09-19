@@ -18,28 +18,30 @@ void check_train_arguments(const mxArray* prhs[]);
 
 void mexFunctionTrain(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
   
-  if (nrhs != 11 || nlhs != 4) {
-    mexErrMsgTxt("Usage: task_boost_learn(I, Itest, X, R, niter, maxDepth, minNodes, minErr, fracFeat, shrink, resume, outfile)"); 
+  if (nrhs != 12 || nlhs != 4) {
+    mexErrMsgTxt("Usage: task_boost_learn(I, Itest, levels, X, R, niter, maxDepth, minNodes, minErr, fracFeat, shrink, resume, outfile)"); 
   }
   check_train_arguments(prhs);
   
   const MappedSparseMatrix<double,ColMajor,long> I = spm_matlab2eigen_mapped(prhs[0]);
   const MappedSparseMatrix<double,ColMajor,long> Itest = spm_matlab2eigen_mapped(prhs[1]);  
-  const mxArray* X_matlab = prhs[2];
-  const mxArray* R_matlab = prhs[3];
+  const mxArray* L_matlab = prhs[2];
+  Map<MatrixXd> taskOv(mxGetPr(L_matlab), mxGetM(L_matlab), mxGetN(L_matlab));
+  const mxArray* X_matlab = prhs[3];
+  const mxArray* R_matlab = prhs[4];
   Map<MatrixXd> X(mxGetPr(X_matlab), mxGetM(X_matlab), mxGetN(X_matlab));
   Map<VectorXd> R(mxGetPr(R_matlab), mxGetM(R_matlab), mxGetN(R_matlab));
   
-  unsigned int niter = (unsigned int)getDoubleScalar(prhs[4]);
-  unsigned int maxDepth = (unsigned int)getDoubleScalar(prhs[5]);
-  unsigned int minNodes = (unsigned int)getDoubleScalar(prhs[6]);
-  double minErr = getDoubleScalar(prhs[7]);
-  double fracFeat = getDoubleScalar(prhs[8]);
-  double shrink = getDoubleScalar(prhs[9]);
-  char* filename = mxArrayToString(prhs[10]);
+  unsigned int niter = (unsigned int)getDoubleScalar(prhs[5]);
+  unsigned int maxDepth = (unsigned int)getDoubleScalar(prhs[6]);
+  unsigned int minNodes = (unsigned int)getDoubleScalar(prhs[7]);
+  double minErr = getDoubleScalar(prhs[8]);
+  double fracFeat = getDoubleScalar(prhs[9]);
+  double shrink = getDoubleScalar(prhs[10]);
+  char* filename = mxArrayToString(prhs[11]);
 
   TaskTreeBooster<  MappedSparseMatrix<double,ColMajor,long>, Map<MatrixXd>, Map<VectorXd> > booster;
-  booster.learn(I, Itest, X, R, niter, maxDepth, minNodes, minErr, fracFeat, shrink, false, filename);
+  booster.learn(I, Itest, taskOv, X, R, niter, maxDepth, minNodes, minErr, fracFeat, shrink, false, filename);
   // booster.learn(I, I, X, R, niter, maxDepth, minNodes, minErr, fracFeat, shrink, true);
  
   plhs[0] = mxCreateDoubleMatrix(niter, 1, mxREAL);
@@ -75,13 +77,16 @@ void mexFunctionTrain(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]
 void check_train_arguments(const mxArray* prhs[]){
   const mxArray* I_matlab = prhs[0];
   const mxArray* Itest_matlab = prhs[1];  
-  const mxArray* X_matlab = prhs[2];
-  const mxArray* R_matlab = prhs[3];
+  const mxArray* L_matlab = prhs[2];
+  const mxArray* X_matlab = prhs[3];
+  const mxArray* R_matlab = prhs[4];
    
   int irows = mxGetM(I_matlab);
   int icols = mxGetN(I_matlab);
   int irows2 = mxGetM(Itest_matlab);
   int icols2 = mxGetN(Itest_matlab);  
+  int lrows = mxGetM(L_matlab);
+  int lcols = mxGetN(L_matlab);
   int xrows = mxGetM(X_matlab);
   int xcols = mxGetN(X_matlab);
   int rrows = mxGetM(R_matlab);
@@ -117,14 +122,17 @@ void check_train_arguments(const mxArray* prhs[]){
   if(!mxIsSparse(Itest_matlab)){
     mexErrMsgTxt("Itest must be sparse");
   }
+  if(lrows != icols || lcols != icols){
+    mexErrMsgTxt("The task matrix must be a double matrix ntask-by-ntask");
+  }
 
-  const mxArray* niter_matlab = prhs[4];
-  const mxArray* maxDepth_matlab = prhs[5];
-  const mxArray* minNodes_matlab = prhs[6];
-  const mxArray* minErr_matlab = prhs[7];
-  const mxArray* fracFeat_matlab = prhs[8];
-  const mxArray* shrink_matlab = prhs[9];
-  const mxArray* filename_matlab = prhs[10];
+  const mxArray* niter_matlab = prhs[5];
+  const mxArray* maxDepth_matlab = prhs[6];
+  const mxArray* minNodes_matlab = prhs[7];
+  const mxArray* minErr_matlab = prhs[8];
+  const mxArray* fracFeat_matlab = prhs[9];
+  const mxArray* shrink_matlab = prhs[10];
+  const mxArray* filename_matlab = prhs[11];
 
   if (!isIntegerScalar(niter_matlab) || getDoubleScalar(niter_matlab) <= 0){
     mexErrMsgTxt("niter must be a positive integer");
@@ -138,7 +146,7 @@ void check_train_arguments(const mxArray* prhs[]){
   if (!isDoubleScalar(minErr_matlab) || getDoubleScalar(minErr_matlab) < 0){
     mexErrMsgTxt("minErr must be a non-negative real");
   }
-  if (!isIntegerScalar(fracFeat_matlab) || getDoubleScalar(fracFeat_matlab) < 0 || getDoubleScalar(fracFeat_matlab) > 1){
+  if (!isDoubleScalar(fracFeat_matlab) || getDoubleScalar(fracFeat_matlab) < 0 || getDoubleScalar(fracFeat_matlab) > 1){
     mexErrMsgTxt("fracFeat must be a real in [0 1]");
   }
   if (!isDoubleScalar(shrink_matlab) || getDoubleScalar(shrink_matlab) <= 0){

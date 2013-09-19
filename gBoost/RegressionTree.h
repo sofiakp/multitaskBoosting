@@ -359,7 +359,7 @@ namespace GBoost {
         vector< RegStumpInfo< ValueType > > stumpResults(nfeat); // Store the results for all possible splits of this node
         Matrix< ResponseValueType, Dynamic, 1 > stumpErrs(nfeat);
         
-        //#pragma omp parallel for num_threads(NUM_SEARCH_THREADS)
+        #pragma omp parallel for num_threads(NUM_SEARCH_THREADS)
         for (unsigned f = 0; f < nfeat; ++f) {
           stumpErrs(f) = learnSingleStump(X, R, W, top.idxList, selFeat(f), stumpResults[f]);
         }
