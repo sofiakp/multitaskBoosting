@@ -26,7 +26,7 @@ void mexFunctionTrain(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]
   const MappedSparseMatrix<double,ColMajor,long> I = spm_matlab2eigen_mapped(prhs[0]);
   const MappedSparseMatrix<double,ColMajor,long> Itest = spm_matlab2eigen_mapped(prhs[1]);  
   const mxArray* L_matlab = prhs[2];
-  Map<MatrixXd> taskOv(mxGetPr(L_matlab), mxGetM(L_matlab), mxGetN(L_matlab));
+  Map<VectorXd> taskOv(mxGetPr(L_matlab), mxGetM(L_matlab), mxGetN(L_matlab));
   const mxArray* X_matlab = prhs[3];
   const mxArray* R_matlab = prhs[4];
   Map<MatrixXd> X(mxGetPr(X_matlab), mxGetM(X_matlab), mxGetN(X_matlab));
@@ -122,9 +122,9 @@ void check_train_arguments(const mxArray* prhs[]){
   if(!mxIsSparse(Itest_matlab)){
     mexErrMsgTxt("Itest must be sparse");
   }
-  if(lrows != icols || lcols != icols){
-    mexErrMsgTxt("The task matrix must be a double matrix ntask-by-ntask");
-  }
+  // if(lrows != icols || lcols != icols){
+  //   mexErrMsgTxt("The task matrix must be a double matrix ntask-by-ntask");
+  // }
 
   const mxArray* niter_matlab = prhs[5];
   const mxArray* maxDepth_matlab = prhs[6];
