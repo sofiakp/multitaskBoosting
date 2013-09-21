@@ -16,15 +16,6 @@
 using namespace Eigen;
 using namespace std;
 
-// namespace boost{
-//   template<class Archive, typename _Scalar, int _Rows, int _Cols, int _Options, int _MaxRows, int _MaxCols>
-//   inline void serialize(Archive & ar, Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols> & t, 
-// 			const unsigned int version){
-//     for(size_t i = 0; i < t.size(); ++i)
-//       ar & t.data()[i];
-//   }
-// }
-
 namespace GBoost {
   template <typename ValueType> struct TaskTreeBoosterParams {
     unsigned maxDepth;
@@ -147,7 +138,6 @@ namespace GBoost {
         taskOvTmp.reserve(ntasks);
         taskOvIdx.push_back(taskOvTmp);
       }
-
       // for(unsigned i = 0; i < ntasks; ++i){
       // 	for(unsigned j = 0; j < ntasks; ++j){
       // 	  if(taskOv(i, j) > 0) taskOvIdx[i].push_back(j);
@@ -174,6 +164,18 @@ namespace GBoost {
     }
 
   public:
+    const unsigned numTasks() const{
+      return ntasks;
+    }
+    const unsigned numFeat() const{
+      return nfeat;
+    }
+    const unsigned numIter() const{
+      return bestTasks.size();
+    }
+    const unsigned numExamples() const{
+      return F.size();
+    }
     const vector<LearnerType>& getLearners() const{
       return learners;
     }
@@ -268,7 +270,7 @@ namespace GBoost {
       assert(taskInd.outerSize() == testInd.outerSize());
       assert(taskInd.innerSize() == testInd.innerSize());
       assert(taskInd.innerSize() == X.rows());
-      assert(levels.rows() == taskInd.outerSize());
+      // assert(levels.rows() == taskInd.outerSize());
       assert(X.rows() == Y.rows());
 
       VectorXd tr(nexamples);
@@ -281,9 +283,9 @@ namespace GBoost {
       tsloss.resize(niter);
 
       // TODO: FIX THIS FOR RESUME
-      VectorXi goodTasks(ntasks);
-      for(unsigned i = 0; i < ntasks; ++i) goodTasks(i) = (int)(levels[i] == 0);
-      assert(goodTasks.sum() > 0);
+      // VectorXi goodTasks(ntasks);
+      // for(unsigned i = 0; i < ntasks; ++i) goodTasks(i) = (int)(levels[i] == 0);
+      // assert(goodTasks.sum() > 0);
 
       vector < vector < unsigned > > testIdx;
       VectorXd ts(nexamples);
@@ -300,47 +302,42 @@ namespace GBoost {
       }
      
       vector<double> taskAlphas(ntasks); // best alpha for each task
-      ResponseValueVectorType taskErr(ntasks); // Reduction in loss for each task
+      ResponseValueVectorType taskErr(ntasks); // Reduction in loss for each task.
       taskErr.setZero();
       ResponseValueVectorType W(nexamples);
       ResponseValueVectorType R(nexamples);
       
-      vector< unsigned > allTasks; // This will be just a vector 0,1,...,ntasks-1
-      for(unsigned i = 0; i < ntasks; ++i){
-	if(goodTasks(i) > 0) allTasks.push_back(i);
-      }
+      vector< unsigned > allTasks(ntasks); // This will be just a vector 0,1,...,ntasks-1
+      for(unsigned i = 0; i < ntasks; ++i) allTasks[i] = i;
 
       gettimeofday(&end, NULL);
       cout << "Time elapsed: " << elapsedTime(start, end) << " ms" << endl;
 
       for(unsigned iter = startIter; iter < niter; ++iter){
 	gettimeofday(&start, NULL);
-
 	setPseudoResiduals(Y, F, W, R);
 
-	ResponseValueType oldErr = (iter > startIter)? tsloss(iter - 1): computeLoss(Y, F, tr_sp); // Error of last iteration
+	ResponseValueType oldErr = (iter > startIter)? trloss(iter - 1): computeLoss(Y, F, tr_sp); // Error of last iteration
 	vector< unsigned > todoTasks = (iter > startIter)? taskOvIdx[bestTasks[iter - 1]]: allTasks;
+
 	cout << "Boosting iter " << iter << " # tasks " << todoTasks.size() << endl;
 
         // Iterate through the tasks whose optimal model has changed since the last iteration
-        #pragma omp parallel for num_threads(NUM_BOOST_THREADS)
+        // #pragma omp parallel for num_threads(NUM_BOOST_THREADS)
         for(unsigned t = 0; t < todoTasks.size(); ++t){
-          // cout << "Learner " << t << endl;
-	  if(goodTasks(todoTasks[t]) > 0){
-	    taskLearners[todoTasks[t]].learn(X, R, W, maxDepth, minNodeSize, minChildErr, taskIdx[todoTasks[t]], fracFeat);
-	    ResponseValueVectorType taskPred(nexamples); 
-	    taskLearners[todoTasks[t]].predict(X, taskIdx[todoTasks[t]], taskPred, 1); // taskPred will be 0 when taskIdx is 0
-	    taskAlphas[todoTasks[t]] = shrink;
-	    taskErr(todoTasks[t]) = computeLoss(Y, F, taskInd.col(todoTasks[t])) - 
-	      computeLoss(Y, F + taskAlphas[todoTasks[t]] * taskPred, taskInd.col(todoTasks[t])); 
-	  }
-        }
-
-	for(unsigned t = 0; t < ntasks; ++t){
-	  if(goodTasks(t) < 1) taskErr(t) = 0;
+	  taskLearners[todoTasks[t]].learn(X, R, W, maxDepth, minNodeSize, minChildErr, taskIdx[todoTasks[t]], fracFeat);
+	  ResponseValueVectorType taskPred(nexamples); 
+	  taskLearners[todoTasks[t]].predict(X, taskIdx[todoTasks[t]], taskPred, 1); // taskPred will be 0 when taskIdx is 0
+	  taskAlphas[todoTasks[t]] = shrink; // No line search needed 
+	  taskErr(todoTasks[t]) = computeLoss(Y, F, taskInd.col(todoTasks[t])) - 
+	    computeLoss(Y, F + taskAlphas[todoTasks[t]] * taskPred, taskInd.col(todoTasks[t])); 
 	}
 
-        //Find the task that gives the minimum error
+	// for(unsigned t = 0; t < ntasks; ++t){
+	//   if(goodTasks(t) < 1) taskErr(t) = 0;
+	// }
+
+        //Find the task that gives the minimum loss (maximum reduction in error)
         unsigned tmp = 0;
         taskErr.maxCoeff(&tmp); // Maximum reduction in loss  
         bestTasks.push_back(tmp);
@@ -348,6 +345,7 @@ namespace GBoost {
 	learners[iter].printInfo();
         alphas.push_back(taskAlphas[bestTasks[iter]]);
         
+	// Make predictions for all test and training examples in that task
 	vector<unsigned> indUnion(taskIdx[bestTasks[iter]].size() + testIdx[bestTasks[iter]].size());
 	vector<unsigned>::iterator it = set_union(taskIdx[bestTasks[iter]].begin(), taskIdx[bestTasks[iter]].end(), 
 						  testIdx[bestTasks[iter]].begin(), testIdx[bestTasks[iter]].end(), indUnion.begin());
@@ -360,15 +358,23 @@ namespace GBoost {
 
 	cout << "Best task " << bestTasks[iter] << " Avg loss (tr, ts) " << trloss(iter) / ntr << " "  << tsloss(iter) / nts << endl;
         
-	for(unsigned i = 0; i < taskOvIdx[bestTasks[iter]].size(); ++i){
-	  unsigned j = taskOvIdx[bestTasks[iter]][i];
-	  if(levels(j) < levels(bestTasks[iter])) goodTasks(j) = 0;
-	  else if(levels(j) == levels(bestTasks[iter]) + 1) goodTasks(j) = 1;
-	}
-	
-	store(filename);
+	// for(unsigned i = 0; i < taskOvIdx[bestTasks[iter]].size(); ++i){
+	//   unsigned j = taskOvIdx[bestTasks[iter]][i];
+	//   if(levels(j) < levels(bestTasks[iter])) goodTasks(j) = 0;
+	//   else if(levels(j) == levels(bestTasks[iter]) + 1) goodTasks(j) = 1;
+	// }
 	gettimeofday(&end, NULL);
 	cout << "Time elapsed: " << elapsedTime(start, end) << " ms" << endl;
+	
+	gettimeofday(&start, NULL);
+	store(filename);
+	gettimeofday(&end, NULL);
+	cout << "Writing results... " << elapsedTime(start, end) << " ms" << endl;
+
+#ifdef MEX
+	// This flushes the output in the MATLAB console.
+	mexEvalString("drawnow");
+#endif
       }
     }
     

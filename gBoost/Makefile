@@ -1,7 +1,7 @@
 #!/bin/bash
 
-NUM_SEARCH_THREADS=1
-NUM_BOOST_THREADS=4
+NUM_SEARCH_THREADS=8
+NUM_BOOST_THREADS=1
 
 # *** SET THE LOCATION OF YOUR MATLAB BINARY DIRECTORY ***
 ## do which matlab, then ls -l whatever-you-get                                                                                                                                      
@@ -29,7 +29,7 @@ MEX=$(MATLABDIR)/bin/mex
 # -g for debugging
 MEX_OPTION= -g -largeArrayDims CXX=$(CXX) LD=$(CXX) CXXFLAGS\#"\$$CXXFLAGS $(CXXFLAGS)" LDFLAGS\#"\$$LDFLAGS $(LDFLAGS)"
 
-all: matlab_eigen unit_test_mex RegressionTreeLearn RegressionTreePredict TaskBoostLearn
+all: matlab_eigen unit_test_mex RegressionTreeLearn RegressionTreePredict TaskBoostLearn TaskBoostModel
 
 matlab_eigen: matlab_eigen.cpp matlab_eigen.h
 	$(MEX) $(MEX_OPTION) -I$(EIGEN_INCLUDE_DIR) -I$(BOOST_INCLUDE_DIR) $(BOOST_LINK_FLAGS) -c matlab_eigen.cpp
@@ -44,4 +44,7 @@ RegressionTreePredict: RegressionTreeLearn.cpp RegressionTree.h matlab_utils.h
 	$(MEX) $(MEX_OPTION) -I$(EIGEN_INCLUDE_DIR) -I$(BOOST_INCLUDE_DIR) $(BOOST_LINK_FLAGS) RegressionTreeLearn.cpp -o regression_tree_predict
 
 TaskBoostLearn: TaskBoostLearn.cpp Booster.h matlab_utils.h matlab_eigen.h matlab_eigen.cpp
-	$(MEX) $(MEX_OPTION) -I$(EIGEN_INCLUDE_DIR) -I$(BOOST_INCLUDE_DIR) $(BOOST_LINK_FLAGS) -DTRAIN TaskBoostLearn.cpp matlab_eigen.o -o task_boost_learn
+	$(MEX) $(MEX_OPTION) -I$(EIGEN_INCLUDE_DIR) -I$(BOOST_INCLUDE_DIR) $(BOOST_LINK_FLAGS) -DMEX -DTRAIN TaskBoostLearn.cpp matlab_eigen.o -o task_boost_learn
+
+TaskBoostModel: TaskBoostLearn.cpp Booster.h matlab_utils.h matlab_eigen.h matlab_eigen.cpp
+	$(MEX) $(MEX_OPTION) -I$(EIGEN_INCLUDE_DIR) -I$(BOOST_INCLUDE_DIR) $(BOOST_LINK_FLAGS) TaskBoostLearn.cpp matlab_eigen.o -o task_boost_model

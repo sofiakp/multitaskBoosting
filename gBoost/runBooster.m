@@ -33,8 +33,8 @@ for f = 1:length(folds)
   ntasks = size(tasks, 2);
   
   all_ind = find(tr | ts); % The rows of tasks correspond to these indices of cexp
-  all_ind = all_ind(1:10:end); % FOR TEST PURPOSES ONLY
-  tasks = tasks(1:10:end, :);
+  %all_ind = all_ind(1:10:end); % FOR TEST PURPOSES ONLY
+  %tasks = tasks(1:10:end, :);
   all_tr_ind = ismember(all_ind, find(tr)); % Indicators of rows of tasks that correspond to training examples
   all_ts_ind = ismember(all_ind, find(ts));
   
@@ -57,6 +57,7 @@ for f = 1:length(folds)
   end
   [trloss, tsloss, pred, imp] = task_boost_learn(sparse(bsxfun(@times, tasks, all_tr_ind)), ...
     sparse(bsxfun(@times, tasks, all_ts_ind)), levels, X, cexp(all_ind), ...
-    params.niter, train_params.maxDepth, train_params.minNodes, 1e-6, train_params.fracFeat, train_params.shrink, outfile);
+    params.niter, train_params.maxDepth, train_params.minNodes, 1e-6, train_params.fracFeat, train_params.shrink, ...
+    resume, outfile);
 end
 end

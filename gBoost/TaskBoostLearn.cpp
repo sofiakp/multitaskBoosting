@@ -18,8 +18,8 @@ void check_train_arguments(const mxArray* prhs[]);
 
 void mexFunctionTrain(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
   
-  if (nrhs != 12 || nlhs != 4) {
-    mexErrMsgTxt("Usage: task_boost_learn(I, Itest, levels, X, R, niter, maxDepth, minNodes, minErr, fracFeat, shrink, resume, outfile)"); 
+  if (nrhs != 13 || nlhs > 4) {
+    mexErrMsgTxt("Usage: [trloss, tsloss, pred, imp] = task_boost_learn(I, Itest, levels, X, R, niter, maxDepth, minNodes, minErr, fracFeat, shrink, resume, outfile)"); 
   }
   check_train_arguments(prhs);
   
@@ -38,31 +38,32 @@ void mexFunctionTrain(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]
   double minErr = getDoubleScalar(prhs[8]);
   double fracFeat = getDoubleScalar(prhs[9]);
   double shrink = getDoubleScalar(prhs[10]);
-  char* filename = mxArrayToString(prhs[11]);
+  bool resume = (bool)getDoubleScalar(prhs[11]);
+  char* filename = mxArrayToString(prhs[12]);
 
   TaskTreeBooster<  MappedSparseMatrix<double,ColMajor,long>, Map<MatrixXd>, Map<VectorXd> > booster;
-  booster.learn(I, Itest, taskOv, X, R, niter, maxDepth, minNodes, minErr, fracFeat, shrink, false, filename);
-  // booster.learn(I, I, X, R, niter, maxDepth, minNodes, minErr, fracFeat, shrink, true);
- 
-  plhs[0] = mxCreateDoubleMatrix(niter, 1, mxREAL);
-  VectorXd trloss = booster.getTrLoss();
-  double* trloss_ptr = mxGetPr(plhs[0]);
-  for(unsigned i = 0; i < niter; ++i) trloss_ptr[i] = trloss(i);
+  booster.learn(I, Itest, taskOv, X, R, niter, maxDepth, minNodes, minErr, fracFeat, shrink, resume, filename);
 
-  plhs[1] = mxCreateDoubleMatrix(niter, 1, mxREAL);
-  VectorXd tsloss = booster.getTsLoss();
-  double* tsloss_ptr = mxGetPr(plhs[1]);
-  for(unsigned i = 0; i < niter; ++i) tsloss_ptr[i] = tsloss(i);
+  if(nlhs > 0){
+    plhs[0] = mxCreateDoubleMatrix(niter, 1, mxREAL);
+    VectorXd trloss = booster.getTrLoss();
+    double* trloss_ptr = mxGetPr(plhs[0]);
+    for(unsigned i = 0; i < niter; ++i) trloss_ptr[i] = trloss(i);
+    
+    plhs[1] = mxCreateDoubleMatrix(niter, 1, mxREAL);
+    VectorXd tsloss = booster.getTsLoss();
+    double* tsloss_ptr = mxGetPr(plhs[1]);
+    for(unsigned i = 0; i < niter; ++i) tsloss_ptr[i] = tsloss(i);
 
-  plhs[2] = mxCreateDoubleMatrix(X.rows(), 1, mxREAL);
-  VectorXd F = booster.getF();
-  double* F_ptr = mxGetPr(plhs[2]);
-  for(unsigned i = 0; i < X.rows(); ++i) F_ptr[i] = F(i);
-  
-  plhs[3] = mxCreateDoubleMatrix(X.cols(), I.cols(), mxREAL); // This should be nfeat-by-ntasks
-  Map<MatrixXd> imp(mxGetPr(plhs[3]), X.cols(), I.cols());
-  booster.varImportance(imp);
-
+    plhs[2] = mxCreateDoubleMatrix(X.rows(), 1, mxREAL);
+    VectorXd F = booster.getF();
+    double* F_ptr = mxGetPr(plhs[2]);
+    for(unsigned i = 0; i < X.rows(); ++i) F_ptr[i] = F(i);
+    
+    plhs[3] = mxCreateDoubleMatrix(X.cols(), I.cols(), mxREAL); // This should be nfeat-by-ntasks
+    Map<MatrixXd> imp(mxGetPr(plhs[3]), X.cols(), I.cols());
+    booster.varImportance(imp);
+  }
   // booster.printInfo();
   // cout << "########### AFTER ARCHIVING ###########" << endl;
   // TaskTreeBooster<  MappedSparseMatrix<double,ColMajor,long>, Map<MatrixXd>, Map<VectorXd> > booster2;
@@ -72,6 +73,50 @@ void mexFunctionTrain(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]
   // plhs[1] = mxCreateDoubleMatrix(X.rows(), 1, mxREAL);
   // Map<VectorXd> pred(mxGetPr(plhs[1]), X.rows());
   // booster.predict(I, X, pred);
+}
+
+void mexFunctionGetModel(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
+  
+  if (nrhs != 1 || nlhs > 4) {
+    mexErrMsgTxt("Usage:  [trloss, tsloss, pred, imp] = task_boost_model(filename)"); 
+  }
+  if(!mxIsChar(prhs[0])){
+    mexErrMsgTxt("filename must be a string");
+  }
+  char* filename = mxArrayToString(prhs[0]);
+  
+  TaskTreeBooster<  MappedSparseMatrix<double,ColMajor,long>, Map<MatrixXd>, Map<VectorXd> > booster;
+  booster.load(filename);
+
+  if(nlhs > 0){
+    VectorXd trloss = booster.getTrLoss();
+    unsigned niter = trloss.size();
+    plhs[0] = mxCreateDoubleMatrix(niter, 1, mxREAL);
+    double* trloss_ptr = mxGetPr(plhs[0]);
+    for(unsigned i = 0; i < niter; ++i) trloss_ptr[i] = trloss(i);
+    
+    if(nlhs > 1){
+      plhs[1] = mxCreateDoubleMatrix(niter, 1, mxREAL);
+      VectorXd tsloss = booster.getTsLoss();
+      double* tsloss_ptr = mxGetPr(plhs[1]);
+      for(unsigned i = 0; i < niter; ++i) tsloss_ptr[i] = tsloss(i);
+    
+      if(nlhs > 2){
+	VectorXd F = booster.getF();
+	plhs[2] = mxCreateDoubleMatrix(F.size(), 1, mxREAL);
+	double* F_ptr = mxGetPr(plhs[2]);
+	for(unsigned i = 0; i < F.size(); ++i) F_ptr[i] = F(i);
+    
+	if(nlhs > 3){
+	  unsigned ntasks = booster.numTasks();
+	  unsigned nfeat = booster.numFeat();
+  	  plhs[3] = mxCreateDoubleMatrix(nfeat, ntasks, mxREAL); // This should be nfeat-by-ntasks
+	  Map<MatrixXd> imp(mxGetPr(plhs[3]), nfeat, ntasks);
+	  booster.varImportance(imp);
+	}
+      }
+    }
+  }
 }
 
 void check_train_arguments(const mxArray* prhs[]){
@@ -132,7 +177,7 @@ void check_train_arguments(const mxArray* prhs[]){
   const mxArray* minErr_matlab = prhs[8];
   const mxArray* fracFeat_matlab = prhs[9];
   const mxArray* shrink_matlab = prhs[10];
-  const mxArray* filename_matlab = prhs[11];
+  const mxArray* filename_matlab = prhs[12];
 
   if (!isIntegerScalar(niter_matlab) || getDoubleScalar(niter_matlab) <= 0){
     mexErrMsgTxt("niter must be a positive integer");
@@ -157,29 +202,10 @@ void check_train_arguments(const mxArray* prhs[]){
   }
 }
 
-void mexFunctionTest(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-
-  /*RegressionTree< Map<MatrixXd>, Map<VectorXd> > tree;
-  tree.loadFromMatlab(prhs[0]);
-  
-  const mxArray* X_matlab = prhs[1];
-  Map<MatrixXd> X(mxGetPr(X_matlab), mxGetM(X_matlab), mxGetN(X_matlab));
-  
-  const mxArray* I_matlab = prhs[2];
-  double* tmp_idxs = mxGetPr(I_matlab);
-  vector<unsigned> idxs(mxGetM(I_matlab));
-  for(unsigned i = 0; i < idxs.size(); ++i) idxs[i] = tmp_idxs[i];
-  
-  plhs[0] = mxCreateDoubleMatrix(idxs.size(),1,mxREAL);
-  Map<VectorXd> pred(mxGetPr(plhs[0]), idxs.size(), 1);
-  tree.predict(X, idxs, pred);*/
-}
-
-
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 #ifdef TRAIN
   mexFunctionTrain(nlhs, plhs, nrhs, prhs);
 #else
-  mexFunctionTest(nlhs, plhs, nrhs, prhs);
+  mexFunctionGetModel(nlhs, plhs, nrhs, prhs);
 #endif
 }
