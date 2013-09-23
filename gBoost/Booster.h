@@ -287,6 +287,7 @@ namespace GBoost {
       // for(unsigned i = 0; i < ntasks; ++i) goodTasks(i) = (int)(levels[i] == 0);
       // assert(goodTasks.sum() > 0);
 
+      unsigned batchSize = 10; // Will only recompute task losses every batchSize iterations
       vector < vector < unsigned > > testIdx;
       VectorXd ts(nexamples);
       getTaskIdx(testInd, testIdx, ts);
@@ -318,7 +319,16 @@ namespace GBoost {
 	setPseudoResiduals(Y, F, W, R);
 
 	ResponseValueType oldErr = (iter > startIter)? trloss(iter - 1): computeLoss(Y, F, tr_sp); // Error of last iteration
-	vector< unsigned > todoTasks = (iter > startIter)? taskOvIdx[bestTasks[iter - 1]]: allTasks;
+	
+	vector< unsigned > todoTasks;
+	if(iter == startIter){
+	  todoTasks = allTasks;
+	}else if(iter % batchSize != 0){
+	  todoTasks.resize(1); 
+	  todoTasks[0] = bestTasks[iter - 1];
+	}else{
+	  todoTasks = taskOvIdx[bestTasks[iter - 1]];
+	}
 
 	cout << "Boosting iter " << iter << " # tasks " << todoTasks.size() << endl;
 
@@ -332,15 +342,18 @@ namespace GBoost {
 	  taskErr(todoTasks[t]) = computeLoss(Y, F, taskInd.col(todoTasks[t])) - 
 	    computeLoss(Y, F + taskAlphas[todoTasks[t]] * taskPred, taskInd.col(todoTasks[t])); 
 	}
-
 	// for(unsigned t = 0; t < ntasks; ++t){
 	//   if(goodTasks(t) < 1) taskErr(t) = 0;
 	// }
 
         //Find the task that gives the minimum loss (maximum reduction in error)
-        unsigned tmp = 0;
-        taskErr.maxCoeff(&tmp); // Maximum reduction in loss  
-        bestTasks.push_back(tmp);
+	if(iter != startIter && iter % batchSize != 0){
+	  bestTasks.push_back(bestTasks[iter - 1]);
+	}else{
+	  unsigned tmp = 0;
+	  taskErr.maxCoeff(&tmp); // Maximum reduction in loss  
+	  bestTasks.push_back(tmp);
+	}
         learners.push_back(taskLearners[bestTasks[iter]]);
 	learners[iter].printInfo();
         alphas.push_back(taskAlphas[bestTasks[iter]]);
