@@ -42,8 +42,10 @@ void mexFunctionTrain(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]
   char* filename = mxArrayToString(prhs[12]);
 
   TaskTreeBooster<  MappedSparseMatrix<double,ColMajor,long>, Map<MatrixXd>, Map<VectorXd> > booster;
+  
+  if(resume) booster.load(filename);
   booster.learn(I, Itest, taskOv, X, R, niter, maxDepth, minNodes, minErr, fracFeat, shrink, resume, filename);
-
+ 
   if(nlhs > 0){
     plhs[0] = mxCreateDoubleMatrix(niter, 1, mxREAL);
     VectorXd trloss = booster.getTrLoss();
@@ -85,7 +87,7 @@ void mexFunctionGetModel(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prh
   }
   char* filename = mxArrayToString(prhs[0]);
   
-  TaskTreeBooster<  MappedSparseMatrix<double,ColMajor,long>, Map<MatrixXd>, Map<VectorXd> > booster;
+  TaskTreeBooster< MappedSparseMatrix<double,ColMajor,long>, Map<MatrixXd>, Map<VectorXd> > booster;
   booster.load(filename);
 
   if(nlhs > 0){

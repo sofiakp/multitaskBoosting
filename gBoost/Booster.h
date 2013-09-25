@@ -279,8 +279,12 @@ namespace GBoost {
       learners.reserve(niter);
       alphas.reserve(niter);
       bestTasks.reserve(niter);
-      trloss.resize(niter);
-      tsloss.resize(niter);
+      trloss.conservativeResize(niter);
+      tsloss.conservativeResize(niter);
+      for(unsigned i = startIter; i < niter; ++i){
+	trloss(i) = 0;
+	tsloss(i) = 0;
+      }
 
       // TODO: FIX THIS FOR RESUME
       // VectorXi goodTasks(ntasks);

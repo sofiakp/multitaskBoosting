@@ -49,4 +49,5 @@ test_task = task;
 test_task(1:2:end, :) = 0;
 taskOv = [1 1 1; 0 1 0; 0 0 1];
 task_boost_learn(sparse(task), sparse(test_task), [0 1 1]', X, y, 100, 2, 20, 1e-6, 1.0, 0.1, false, '/home/sofiakp/test.bin');
+task_boost_learn(sparse(task), sparse(test_task), [0 1 1]', X, y, 110, 2, 20, 1e-6, 1.0, 0.1, true, '/home/sofiakp/test.bin');
 [trloss, tsloss, pred, imp] = task_boost_model('/home/sofiakp/test.bin');
