@@ -241,7 +241,7 @@ namespace GBoost {
       ResponseValueType m = (ind.cwiseProduct(Y)).sum() / ind.nonZeros();
       ResponseValueVectorType mvec(Y.size());
       mvec.setConstant(m);
-      return (Y - mvec).cwiseAbs2().sum();
+      return (ind.cwiseProduct(Y - mvec)).cwiseAbs2().sum();
     }
 
     template < typename Derived2 >
@@ -385,7 +385,7 @@ namespace GBoost {
 	tsloss(iter) = computeLoss(Y, F, ts_sp);
 
 	cout << "Best task " << bestTasks[iter] << " Avg loss (tr, ts) " << trloss(iter) / ntr << " "  << tsloss(iter) / nts
-	     << " R-squared (tr, ts) " << trloss(iter) / ytr << " " << tsloss(iter) /  yts;
+	     << " R-squared (tr, ts) " << 1 - trloss(iter) / ytr << " " << 1 - tsloss(iter) /  yts;
         
 	// for(unsigned i = 0; i < taskOvIdx[bestTasks[iter]].size(); ++i){
 	//   unsigned j = taskOvIdx[bestTasks[iter]][i];
