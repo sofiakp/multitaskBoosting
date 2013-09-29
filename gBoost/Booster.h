@@ -236,6 +236,14 @@ namespace GBoost {
       return (ind.cwiseProduct(Y - F)).cwiseAbs2().sum();
     }
 
+    template < typename OtherDerived>
+    ResponseValueType computeBaseLoss(const MatrixBase<ResponseDerived> &Y, const SparseMatrixBase<OtherDerived> &ind){
+      ResponseValueType m = (ind.cwiseProduct(Y)).sum() / ind.nonZeros();
+      ResponseValueVectorType mvec(Y.size());
+      mvec.setConstant(m);
+      return (Y - mvec).cwiseAbs2().sum();
+    }
+
     template < typename Derived2 >
     void learn(const SparseMatrixBase<TaskDerived> &taskInd, const SparseMatrixBase<TaskDerived> &testInd, const MatrixBase<Derived2> &levels,
 	       const MatrixBase<FeatureDerived> &X, const MatrixBase<ResponseDerived> &Y, unsigned niter, unsigned maxDepth, unsigned minNodeSize, 
@@ -286,7 +294,6 @@ namespace GBoost {
 	tsloss(i) = 0;
       }
 
-      // TODO: FIX THIS FOR RESUME
       // VectorXi goodTasks(ntasks);
       // for(unsigned i = 0; i < ntasks; ++i) goodTasks(i) = (int)(levels[i] == 0);
       // assert(goodTasks.sum() > 0);
@@ -314,6 +321,10 @@ namespace GBoost {
       
       vector< unsigned > allTasks(ntasks); // This will be just a vector 0,1,...,ntasks-1
       for(unsigned i = 0; i < ntasks; ++i) allTasks[i] = i;
+
+      // Needed for computing R-squared
+      ResponseValueType ytr = computeBaseLoss(Y, tr_sp);
+      ResponseValueType yts = computeBaseLoss(Y, ts_sp);
 
       gettimeofday(&end, NULL);
       cout << "Time elapsed: " << elapsedTime(start, end) << " ms" << endl;
@@ -373,7 +384,8 @@ namespace GBoost {
         trloss(iter) = oldErr - taskErr(bestTasks[iter]);
 	tsloss(iter) = computeLoss(Y, F, ts_sp);
 
-	cout << "Best task " << bestTasks[iter] << " Avg loss (tr, ts) " << trloss(iter) / ntr << " "  << tsloss(iter) / nts << endl;
+	cout << "Best task " << bestTasks[iter] << " Avg loss (tr, ts) " << trloss(iter) / ntr << " "  << tsloss(iter) / nts
+	     << " R-squared (tr, ts) " << trloss(iter) / ytr << " " << tsloss(iter) /  yts;
         
 	// for(unsigned i = 0; i < taskOvIdx[bestTasks[iter]].size(); ++i){
 	//   unsigned j = taskOvIdx[bestTasks[iter]][i];

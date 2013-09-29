@@ -1,79 +1,23 @@
-%clear all
-%rs = RandStream('mt19937ar', 'Seed', 1);
-%RandStream.setGlobalStream(rs);
-
-%indir = '/home/sofiakp/projects/Anshul/matlab/medusa/data/Jul13/hg19.encode.rna_rpk500_z2';
-
-% This clusters the expression data (i.e. the output) which is not really
-% what we want for multi-task regression, because in this way we're
-% effectively using the output we're trying to predict.
-%
-% nclust = 30;
-% 
-% outdir = ['/home/sofiakp/projects/Anshul/matlab/medusa/data/Jul13/hg19.encode.rna_asinh_rpk100_z2_clust', num2str(nclust)];
-% if ~isdir(outdir)
-%  mkdir(outdir);
-% end
-% 
-% load(fullfile(indir, 'targets_asinh.mat'));
-% sel_genes = true(size(cexp, 1), 1);
-% sel_expt = true(size(cexp, 2), 1);
-% cexp = cexp(sel_genes, sel_expt);
-% [ngen, nexp] = size(cexp);
-% km = litekmeans(cexp', nclust);
-% centroids = zeros(nclust, nexp);
-% [~, kidx] = sort(km, 'ascend');
-% 
-% for k = 1:nclust
-%   sel = km == k;
-%   centroids(k, :) = mean(cexp(sel, :), 1);
-% end  
-% 
-% c = clustergram(centroids, 'RowLabels', strcat('Cluster ', arrayfun(@num2str, 1:nclust, 'UniformOutput', false)'), ...
-%   'ColumnLabels', exptnames, 'Colormap', redbluecmap, 'Linkage', 'ward');
-% 
-% Z = linkage(centroids, 'Ward');
-% 
-% tasks = false(length(km), 2*nclust - 1);
-% for i = 1:nclust
-%   tasks(:, i) = km == i;
-% end
-% for i = 1:size(Z, 1)
-%   tasks(:, nclust + i) = tasks(:, Z(i, 1)) | tasks(:, Z(i, 2));
-% end
-% assert(all(tasks(:, end)));
-% save(fullfile(outdir, 'clusters.mat'), 'km', 'centroids', 'tasks');
-% dlmwrite(fullfile(outdir, 'clusters.txt'), centroids, 'delimiter', '\t');
-% dlmwrite(fullfile(outdir, 'cluster_ind.txt'), km');
-%%
-% load(fullfile(indir, 'parents_regulatorList3_asinh.mat'));
-% pexp = pexp'; % make pexp expt-by-regulators
-% 
-% load(fullfile(indir, 'hocomoco_pouya_stam_jaspar_proxRegions_norm_scores.mat'));
-% sel_mot = strcmp(pssm_source,'hocomoco');
-% scores = scores(sel_mot, :)';
-% mot_names = mot_names(sel_mot);
-% nmot = sum(sel_mot);
-% 
-% load(fullfile(indir, 'folds10_examples'));
-% tr = trainSets{1};
-% ts = testSets{1};
-% [r, c] = find(tr | ts); % all examples
-% X = [pexp(c, :) scores(r, :)];
-%%
 clear all
 rs = RandStream('mt19937ar', 'Seed', 1);
 RandStream.setGlobalStream(rs);
 
+% Cluster the cell lines based on the expression of regulators and
+% the genes based on the motifs.
+
 indir = '/home/sofiakp/projects/Anshul/matlab/medusa/data/Jul13/hg19.encode.rna_rpk500_z2';
 
 nclust_pexp = 21;
-nclust_scores = 10;
+nclust_scores = 0;
 min_clust_size = 50;
 max_percent = 0.8; % Tasks containing more than this fraction of
                    % examples will be removed
-
-outdir = ['/home/sofiakp/projects/Anshul/matlab/medusa/data/Jul13/hg19.encode.rna_asinh_rpk500_z2', '_pClust', num2str(nclust_pexp), '_sClust', num2str(nclust_scores)];
+asinh = false;
+if asinh
+   outdir = ['/home/sofiakp/projects/Anshul/matlab/medusa/data/Jul13/hg19.encode.rna_asinh_rpk500_z2', '_pClust', num2str(nclust_pexp), '_sClust', num2str(nclust_scores)];
+else
+ outdir = ['/home/sofiakp/projects/Anshul/matlab/medusa/data/Jul13/hg19.encode.rna_rpk500_z2', '_pClust', num2str(nclust_pexp), '_sClust', num2str(nclust_scores)];
+end
 if ~isdir(outdir)
   mkdir(outdir);
 end
@@ -88,7 +32,7 @@ ts = testSets{fold};
 [rows, cols] = find(tr | ts); % all examples
 nex = length(cols);
 
-load(fullfile(indir, 'parents_regulatorList3_asinh.mat'));
+load(fullfile(indir, 'parents_regulatorList3.mat'));
 % Cluster the cell lines based on the expression of regulators.
 if nclust_pexp < size(pexp, 2)
     km = litekmeans(pexp, nclust_pexp);
@@ -99,7 +43,11 @@ if nclust_pexp < size(pexp, 2)
     Z = linkage(centroids, 'Ward'); % Do a hiearchical clustering of the clusters
 else
     km = 1:size(pexp, 2);
-    Z = linkage(pexp', 'Ward'); % Do a hiearchical clustering of the cell lines
+    Z = linkage(pexp', 'Ward'); % Do a hiearchical clustering of
+                                % the cell lines
+    figure(); dendrogram(Z, 'Orientation', 'left', 'Labels', exptnames);
+    print(gcf, fullfile(outdir, ['clusters', num2str(fold), '_pexp.pdf']), ...
+          '-dpdf');
 end
 
 tot_npexp = 2 * nclust_pexp - 1;
@@ -134,47 +82,58 @@ sel_mot = strcmp(pssm_source,'hocomoco');
 scores = scores(sel_mot, :);
 mot_names = mot_names(sel_mot);
 nmot = sum(sel_mot);
+feature_names = [parents_names; mot_names];
 
-% Cluster the genes based on the motif scores
-km = litekmeans(scores, nclust_scores);
-centroids = zeros(nclust_scores, nmot); % Average motif scores in each cluster
-for k = 1:nclust_scores
-  centroids(k, :) = nanmean(scores(:, km == k), 2);
-end
-km_scores = km;
-
-Z = linkage(centroids, 'Ward');
-tot_nscores = 2 * nclust_scores - 1;
-levels_scores = zeros(tot_nscores, 1);
-tasks_scores = false(length(rows), tot_nscores);
-for i = 1:nclust_scores
-  tasks_scores(:, i) = ismember(rows, find(km == i));
-end
-for i = 1:size(Z, 1)
-  levels_scores(nclust_scores + i) = max(levels_scores(Z(i, 1)), levels_scores(Z(i,2))) + 1;
-  tasks_scores(:, nclust_scores + i) = tasks_scores(:, Z(i, 1)) | ...
-      tasks_scores(:, Z(i, 2));
-  fprintf(f, 'Scores Cluster %d: %d + %d (%.2f of examples)\n', nclust_scores + ...
-          i, Z(i, 1), Z(i, 2), sum(tasks_scores(:, nclust_scores + i)) * 100 / nex);
-end
-levels_scores = max(levels_scores) - levels_scores;
-Z = [[1:nclust_scores; 1:nclust_scores; zeros(1, nclust_scores)]'; Z];
-good_clust = sum(tasks_scores, 1)/nex < max_percent;
-clust_map = zeros(tot_nscores, 1);
-clust_map(good_clust) = 1:nnz(good_clust);
-tasks_scores = tasks_scores(:, good_clust);
-Z_scores = Z(good_clust, :);
-Z_scores(:, 1:2) = clust_map(Z_scores(:, 1:2));
-levels_scores = levels_scores(good_clust);
-km_scores = clust_map(km); % This will fail if we removed any
+if nclust_scores > 0
+        
+    % Cluster the genes based on the motif scores
+    km = litekmeans(scores, nclust_scores);
+    centroids = zeros(nclust_scores, nmot); % Average motif scores in each cluster
+    for k = 1:nclust_scores
+        centroids(k, :) = nanmean(scores(:, km == k), 2);
+    end
+    km_scores = km;
+    
+    Z = linkage(centroids, 'Ward');
+    tot_nscores = 2 * nclust_scores - 1;
+    levels_scores = zeros(tot_nscores, 1);
+    tasks_scores = false(length(rows), tot_nscores);
+    for i = 1:nclust_scores
+        tasks_scores(:, i) = ismember(rows, find(km == i));
+    end
+    for i = 1:size(Z, 1)
+        levels_scores(nclust_scores + i) = max(levels_scores(Z(i, 1)), levels_scores(Z(i,2))) + 1;
+        tasks_scores(:, nclust_scores + i) = tasks_scores(:, Z(i, 1)) | ...
+            tasks_scores(:, Z(i, 2));
+        fprintf(f, 'Scores Cluster %d: %d + %d (%.2f of examples)\n', nclust_scores + ...
+                i, Z(i, 1), Z(i, 2), sum(tasks_scores(:, nclust_scores + i)) * 100 / nex);
+    end
+    levels_scores = max(levels_scores) - levels_scores;
+    Z = [[1:nclust_scores; 1:nclust_scores; zeros(1, nclust_scores)]'; Z];
+    good_clust = sum(tasks_scores, 1)/nex < max_percent;
+    clust_map = zeros(tot_nscores, 1);
+    clust_map(good_clust) = 1:nnz(good_clust);
+    tasks_scores = tasks_scores(:, good_clust);
+    Z_scores = Z(good_clust, :);
+    Z_scores(:, 1:2) = clust_map(Z_scores(:, 1:2));
+    levels_scores = levels_scores(good_clust);
+    km_scores = clust_map(km); % This will fail if we removed any
                                % of the initial clusters
+    
+    levels = [levels_pexp; levels_scores]; 
+    tasks = [tasks_pexp tasks_scores];
+    %pord = repmat(1:tot_npexp, tot_nscores, 1); pord = pord(:); % 1 1 1... 1 2 2 2... 2 3 3 3...
+    %sord = repmat([1:tot_nscores]', tot_npexp, 1); % 1 2 3... 1 2 3... 1 2 3...
+    %tasks = tasks_pexp(:, pord) & tasks_scores(:, sord);
+    assert(size(levels, 1) == size(tasks, 2));
 
-levels = [levels_pexp; levels_scores]; 
-tasks = [tasks_pexp tasks_scores];
-%pord = repmat(1:tot_npexp, tot_nscores, 1); pord = pord(:); % 1 1 1... 1 2 2 2... 2 3 3 3...
-%sord = repmat([1:tot_nscores]', tot_npexp, 1); % 1 2 3... 1 2 3... 1 2 3...
-%tasks = tasks_pexp(:, pord) & tasks_scores(:, sord);
-assert(size(levels, 1) == size(tasks, 2));
+    save(fullfile(outdir, ['clusters', num2str(fold), '.mat']), ...
+         'tasks', 'feature_names', 'Z_pexp', 'km_pexp', 'Z_scores', ...
+         'km_scores', 'levels');
+else
+    tasks = tasks_pexp;
+    levels = levels_pexp;
+    save(fullfile(outdir, ['clusters', num2str(fold), '.mat']), ...
+         'tasks', 'feature_names', 'Z_pexp', 'km_pexp', 'levels');
+end
 fclose(f);
-save(fullfile(outdir, ['clusters', num2str(fold), '_exFrac', num2str(max_percent), '.mat']), ...
-     'tasks', 'Z_pexp', 'km_pexp', 'Z_scores', 'km_scores', 'levels');

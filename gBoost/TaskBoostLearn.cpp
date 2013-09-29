@@ -79,8 +79,8 @@ void mexFunctionTrain(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]
 
 void mexFunctionGetModel(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
   
-  if (nrhs != 1 || nlhs > 4) {
-    mexErrMsgTxt("Usage:  [trloss, tsloss, pred, imp] = task_boost_model(filename)"); 
+  if (nrhs != 1 || nlhs > 5) {
+    mexErrMsgTxt("Usage:  [trloss, tsloss, pred, bestTasks, imp] = task_boost_model(filename)"); 
   }
   if(!mxIsChar(prhs[0])){
     mexErrMsgTxt("filename must be a string");
@@ -110,11 +110,19 @@ void mexFunctionGetModel(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prh
 	for(unsigned i = 0; i < F.size(); ++i) F_ptr[i] = F(i);
     
 	if(nlhs > 3){
-	  unsigned ntasks = booster.numTasks();
-	  unsigned nfeat = booster.numFeat();
-  	  plhs[3] = mxCreateDoubleMatrix(nfeat, ntasks, mxREAL); // This should be nfeat-by-ntasks
-	  Map<MatrixXd> imp(mxGetPr(plhs[3]), nfeat, ntasks);
-	  booster.varImportance(imp);
+	  vector<unsigned> bestTasks = booster.getBestTasks();
+	  plhs[3] = mxCreateDoubleMatrix(bestTasks.size(), 1, mxREAL);
+	  double* bt_ptr = mxGetPr(plhs[3]);
+	  // Add 1 for matlab indexing
+	  for(unsigned i = 0; i < bestTasks.size(); ++i) bt_ptr[i] = bestTasks[i] + 1;
+
+	  if(nlhs > 4){
+	    unsigned ntasks = booster.numTasks();
+	    unsigned nfeat = booster.numFeat();
+	    plhs[4] = mxCreateDoubleMatrix(nfeat, ntasks, mxREAL); // This should be nfeat-by-ntasks
+	    Map<MatrixXd> imp(mxGetPr(plhs[4]), nfeat, ntasks);
+	    booster.varImportance(imp);
+	  }
 	}
       }
     }
