@@ -17,12 +17,14 @@ load(files.reg_file);
 pexp = pexp';
 nreg = size(pexp, 2);
 
-load(files.score_files{1});
-sel_mot = strcmp(pssm_source,'hocomoco');
-scores = scores(sel_mot, :)';
-mot_names = mot_names(sel_mot);
-nmot = sum(sel_mot);
-
+has_scores = ~isempty(files.score_files{1});
+if has_scores
+    load(files.score_files{1});
+    sel_mot = strcmp(pssm_source,'hocomoco');
+    scores = scores(sel_mot, :)';
+    mot_names = mot_names(sel_mot);
+    nmot = sum(sel_mot);
+end
 load(files.fold_file);
 
 for f = 1:length(folds)
@@ -39,8 +41,11 @@ for f = 1:length(folds)
   all_ts_ind = ismember(all_ind, find(ts));
   
   [exr exc] = ind2sub(size(tr), all_ind);
-  X = [pexp(exc, :) scores(exr, :)];
-  
+  if has_scores
+      X = [pexp(exc, :) scores(exr, :)];
+  else
+      X = pexp(exc, :);
+  end
   taskOv = zeros(ntasks, ntasks);
   for i = 1:ntasks,
     for j = 1:ntasks,

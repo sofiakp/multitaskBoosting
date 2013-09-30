@@ -385,7 +385,7 @@ namespace GBoost {
 	tsloss(iter) = computeLoss(Y, F, ts_sp);
 
 	cout << "Best task " << bestTasks[iter] << " Avg loss (tr, ts) " << trloss(iter) / ntr << " "  << tsloss(iter) / nts
-	     << " R-squared (tr, ts) " << 1 - trloss(iter) / ytr << " " << 1 - tsloss(iter) /  yts;
+	     << " R-squared (tr, ts) " << 1 - trloss(iter) / ytr << " " << 1 - tsloss(iter) /  yts << endl;
         
 	// for(unsigned i = 0; i < taskOvIdx[bestTasks[iter]].size(); ++i){
 	//   unsigned j = taskOvIdx[bestTasks[iter]][i];
