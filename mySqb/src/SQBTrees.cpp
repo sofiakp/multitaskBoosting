@@ -35,7 +35,7 @@
 
 #include <SQB/Core/LineSearch.h>
 
-typedef SQB::TreeBoosterWeightsType  WeightsType;
+typedef SQB::TreeBoosterWeightsType  WeightsType; // basically a double
 typedef float   FeatsType;
 
 typedef Eigen::Array<FeatsType, Eigen::Dynamic, Eigen::Dynamic>     gFeatArrayType;

@@ -32,6 +32,7 @@ using std::endl;
 namespace SQB
 {
     // FeatureIndexList specialized for a matrix/array (Eigen)
+    // Matrix of features, eg Matrix<fload, Dynamic, Dynamic>. I feel it's redundant.
     template<typename TMatrix>
     struct MatrixFeatureIndexList
     {
@@ -68,6 +69,7 @@ namespace SQB
     };
 
     // defines a list of samples to go through
+    // Matrix of samples. Same as matrix of features. I don't know why we need both.
     template<typename TMatrix>
     struct MatrixSampleIndexList
     {
@@ -95,6 +97,7 @@ namespace SQB
     };
 
     // returns the weight and response of an object
+    // Unnecessary. Just have different response and weight matrices.
     template<typename VectorType>
     struct MatrixResponseAndWeightsValueObject
     {
@@ -126,6 +129,7 @@ namespace SQB
     };
 
     // returns the value of a sample index, based on a vector
+    // So this is basically a vector like Eigen::Array<double, Dynamic, 1>
     template<typename VectorType>
     struct MatrixSingleResponseValueObject
     {
@@ -149,6 +153,7 @@ namespace SQB
     };
 
     // returns the value of a specific feature at a given sample index
+    // This contains the exact same information as features and samples!!! What the hek!
     template<typename TMatrix>
     struct MatrixFeatureValueObject
     {
@@ -983,6 +988,9 @@ namespace SQB
             // sort indices
             IdxListType sortedIdx = idxs;   // just copy now
 
+            // samplIdx[idxs] are the indices of examples that reach a node of the regression tree.
+            // We only want to separate these. This sort will sort the indices based on the values of feature fidx.
+            // (Not sure why we need sampIdxs in the first place.)
             std::sort( sortedIdx.begin(), sortedIdx.end(),
                     SortFeature<FeatureValueObjectType, SampleIndexListType>( featValObj, 
                                     fIdx,
