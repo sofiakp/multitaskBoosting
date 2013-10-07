@@ -225,7 +225,7 @@ namespace GBoost {
         W.setOnes();
         R = Y - F; // Negative gradient devided by weights
     }
-    
+    // TODO: In the future I should be multiplying this by 0.5
     template < typename Derived>
     ResponseValueType computeLoss(const MatrixBase<ResponseDerived> &Y, const MatrixBase<Derived> &F){
       return (Y - F).cwiseAbs2().sum();
