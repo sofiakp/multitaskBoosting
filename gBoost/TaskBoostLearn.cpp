@@ -79,8 +79,8 @@ void mexFunctionTrain(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]
 
 void mexFunctionGetModel(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
   
-  if (nrhs != 1 || nlhs > 5) {
-    mexErrMsgTxt("Usage:  [trloss, tsloss, pred, bestTasks, imp] = task_boost_model(filename)"); 
+  if (nrhs != 1 || nlhs > 6) {
+    mexErrMsgTxt("Usage:  [trloss, tsloss, pred, bestTasks, imp, featMat] = task_boost_model(filename)"); 
   }
   if(!mxIsChar(prhs[0])){
     mexErrMsgTxt("filename must be a string");
@@ -122,6 +122,17 @@ void mexFunctionGetModel(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prh
 	    plhs[4] = mxCreateDoubleMatrix(nfeat, ntasks, mxREAL); // This should be nfeat-by-ntasks
 	    Map<MatrixXd> imp(mxGetPr(plhs[4]), nfeat, ntasks);
 	    booster.varImportance(imp);
+	    
+	    if(nlhs > 5){
+	      unsigned ninternal = booster.getNumInternal();
+	      plhs[5] = mxCreateDoubleMatrix(ninternal, 3, mxREAL);
+	      Map<MatrixXd> fmat_out(mxGetPr(plhs[5]), ninternal, 3);
+	      booster.getFeatMat(fmat_out);
+	      for(unsigned i = 0; i < ninternal; ++i){
+		fmat_out(i, 0) = fmat_out(i, 0) + 1;
+		fmat_out(i, 1) = fmat_out(i, 1) + 1;
+	      }
+	    }
 	  }
 	}
       }

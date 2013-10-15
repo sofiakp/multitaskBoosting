@@ -67,6 +67,8 @@ namespace GBoost {
     typedef Matrix<ResponseValueType, Dynamic, 1> ResponseValueVectorType;
     
     typedef RegressionTree< FeatureDerived, ResponseValueVectorType > LearnerType;
+    typedef RegressionTreeNode< ValueType, IndexType > NodeType;
+
   private:
     vector < vector < unsigned > > taskIdx; // same information as taskInd, but list of indices of examples per task
     vector < vector < unsigned > > taskOvIdx; // for each task, list of indices of overlapping tasks
@@ -459,6 +461,37 @@ namespace GBoost {
 	c.setZero();
 	learners[i].varImportance(c); 
 	imp.col(bestTasks[i]) = imp.col(bestTasks[i]) + c;
+      }
+    }
+
+    unsigned getNumInternal(){
+      unsigned nrows = 0;
+      // Get total number of internal nodes
+      for(unsigned i = 0; i < bestTasks.size(); ++i){
+	vector<NodeType> nodes = learners[i].getNodes();
+	for(unsigned k = 0; k < nodes.size(); ++k){
+	  nrows += unsigned(!nodes[k].isLeaf);
+	}
+      }
+      return nrows;
+    }
+
+    template < typename ResponseDerived2 >
+    void getFeatMat(MatrixBase<ResponseDerived2>& m){
+      assert(m.rows() == getNumInternal());
+      assert(m.cols() == 3);
+
+      unsigned j = 0;
+      for(unsigned i = 0; i < bestTasks.size(); ++i){
+	vector<NodeType> nodes = learners[i].getNodes();
+	for(unsigned k = 0; k < nodes.size(); ++k){
+	  if(!nodes[k].isLeaf){
+	    m(j, 0) = bestTasks[i];
+	    m(j, 1) = nodes[k].featureIdx;
+	    m(j, 2) = nodes[k].value;
+	    j++;
+	  }
+	}
       }
     }
   };
