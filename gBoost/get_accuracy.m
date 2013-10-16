@@ -12,8 +12,8 @@ nfolds = length(trloss_cell_all);
 assert(length(tsloss_cell_all) == nfolds);
 assert(length(pred_all) == nfolds);
 assert(length(best_tasks_all) == nfolds);
-assert(length(tr_all) == nfolds);
-assert(length(ts_all) == nfolds);
+assert(length(tr_all) >= nfolds);
+assert(length(ts_all) >= nfolds);
 
 nlevels = max(levels);
 cum_levels = zeros(niter, nlevels);
