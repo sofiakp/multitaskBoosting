@@ -27,8 +27,9 @@ if has_scores
 end
 load(files.fold_file);
 
+load(fullfile(clust_dir, 'clusters1.mat'));
+
 for f = 1:length(folds)
-  load(fullfile(clust_dir, ['clusters', num2str(folds(f)), '.mat']));
   outfile = [outfile_root, '.', num2str(folds(f)), '.bin'];
   tr = trainSets{folds(f)};
   ts = testSets{folds(f)};

@@ -1,4 +1,4 @@
-function [bin_pred, bin_counts, pd_diff, pd_stat] = par_dep(pred, vals1, vals2, thresh1, thresh2)
+function [bin_pred, bin_counts, pd_diff, pd_stat, cuts1, cuts2] = par_dep(pred, vals1, vals2, thresh1, thresh2)
 %[bin_vals1, ~, cuts1] = bin_vals(vals1, pred, nbins);
 %[bin_vals2, ~, cuts2] = bin_vals(vals2, pred, nbins);
 thresh1 = [min(vals1); thresh1; max(vals1)];
