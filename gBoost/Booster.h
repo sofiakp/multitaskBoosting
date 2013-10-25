@@ -448,6 +448,28 @@ namespace GBoost {
       // }
     }
 
+    // Average prediction for each of the given examples when each of the given fetures is removed.
+    template < typename ResponseDerived2 >
+    void predict(const SparseMatrixBase<TaskDerived> &tInd, const MatrixBase<FeatureDerived> &X, 
+		       const vector<unsigned> &featIdx, MatrixBase<ResponseDerived2>& pred){
+      typedef typename ResponseDerived2::Scalar RType;
+
+      assert(tInd.cols() == ntasks);
+      vector < vector < unsigned > > tIdx;
+      MatrixXd tmp(X.rows(), 1); // Not used
+      getTaskIdx(tInd, tIdx, tmp);
+      
+      assert(pred.rows() == X.rows());
+      assert(pred.cols() == featIdx.size());
+      pred.setZero();
+      
+      for(unsigned i = 0; i < bestTasks.size(); ++i){
+	Matrix<RType, Dynamic, Dynamic> treePred(X.rows(), featIdx.size());
+	learners[i].predict(X, tIdx[bestTasks[i]], featIdx, treePred); 
+	pred += alphas[i] * treePred;
+      }
+    }
+
     template < typename ResponseDerived2 >
     void varImportance(MatrixBase<ResponseDerived2>& imp){
       typedef typename ResponseDerived2::Scalar RType;
@@ -460,7 +482,7 @@ namespace GBoost {
 	Matrix<RType, Dynamic, 1> c(nfeat);
 	c.setZero();
 	learners[i].varImportance(c); 
-	imp.col(bestTasks[i]) = imp.col(bestTasks[i]) + c;
+	imp.col(bestTasks[i]) = imp.col(bestTasks[i]) + alphas[i] * c;
       }
     }
 

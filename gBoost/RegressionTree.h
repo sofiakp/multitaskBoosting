@@ -451,6 +451,48 @@ namespace GBoost {
       }
     }
 
+    template <typename FeatureDerived2, typename Derived>
+    void predict(const MatrixBase<FeatureDerived2> &X, const vector<unsigned> &sampIdxs, 
+		 const vector<unsigned> &featIdx, MatrixBase<Derived> &pred) const{
+      const unsigned ns = sampIdxs.size();
+      const unsigned nf = featIdx.size();
+      assert(pred.cols() == nf);
+      pred.setZero();
+
+      // For each feature, compute the average prediction of each sample when the feature is removed from the tree.
+      for (unsigned f = 0; f < nf; ++f){
+	for (unsigned i = 0; i < ns; ++i){
+	  stack< pair < unsigned, double > > testNodes; // (Node idx, multiplier)
+	  // Start at the root with multiplier 1. Whenever we split on feature f, we divide the
+	  // prediction of each child by half.
+	  testNodes.push(make_pair(0, 1.0)); 
+
+	  while(!testNodes.empty()){
+	    pair<unsigned, double> top = testNodes.top();
+	    testNodes.pop();
+	    unsigned curNode = top.first;
+	    double mult = top.second;
+
+	    while(true) {
+	      if(nodes[curNode].isLeaf){
+		pred(sampIdxs[i], f) += mult * nodes[curNode].value;
+		break;
+	      }
+	      unsigned feat = nodes[curNode].featureIdx;
+	      if(feat == featIdx[f]){
+		// Follow both children
+		testNodes.push(make_pair(nodes[curNode].rightNodeIdx, .5 * mult));
+		testNodes.push(make_pair(nodes[curNode].leftNodeIdx, .5 * mult));
+		break;
+	      }
+	      curNode = (X(sampIdxs[i], nodes[curNode].featureIdx) < nodes[curNode].value)?
+		nodes[curNode].leftNodeIdx:nodes[curNode].rightNodeIdx;
+	    }
+	  }
+	}
+      }
+    }
+
     void varImportance(vector<ValueType>& imp) const{
       unsigned nnodes = nodes.size();
       for(unsigned i = 0; i < nnodes; ++i){

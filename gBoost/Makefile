@@ -20,7 +20,7 @@ CXX=g++
 #g++44 for scail
 
 # Add -O3 if not debugging
-CXXFLAGS= -DQUIET -Wall -fPIC -I$(MATLABDIR)/extern/include -fopenmp -DNUM_SEARCH_THREADS=$(NUM_SEARCH_THREADS) -DNUM_BOOST_THREADS=$(NUM_BOOST_THREADS)
+CXXFLAGS= -DQUIET -O3 -Wall -fPIC -I$(MATLABDIR)/extern/include -fopenmp -DNUM_SEARCH_THREADS=$(NUM_SEARCH_THREADS) -DNUM_BOOST_THREADS=$(NUM_BOOST_THREADS)
 
 LDFLAGS= -fopenmp
 
@@ -29,7 +29,7 @@ MEX=$(MATLABDIR)/bin/mex
 # -g for debugging
 MEX_OPTION= -g -largeArrayDims CXX=$(CXX) LD=$(CXX) CXXFLAGS\#"\$$CXXFLAGS $(CXXFLAGS)" LDFLAGS\#"\$$LDFLAGS $(LDFLAGS)"
 
-all: matlab_eigen unit_test_mex RegressionTreeLearn RegressionTreePredict TaskBoostLearn TaskBoostModel
+all: matlab_eigen unit_test_mex RegressionTreeLearn RegressionTreePredict TaskBoostLearn TaskBoostModel TaskBoostImp
 
 matlab_eigen: matlab_eigen.cpp matlab_eigen.h
 	$(MEX) $(MEX_OPTION) -I$(EIGEN_INCLUDE_DIR) -I$(BOOST_INCLUDE_DIR) $(BOOST_LINK_FLAGS) -c matlab_eigen.cpp
@@ -48,3 +48,6 @@ TaskBoostLearn: TaskBoostLearn.cpp Booster.h matlab_utils.h matlab_eigen.h matla
 
 TaskBoostModel: TaskBoostLearn.cpp Booster.h matlab_utils.h matlab_eigen.h matlab_eigen.cpp
 	$(MEX) $(MEX_OPTION) -I$(EIGEN_INCLUDE_DIR) -I$(BOOST_INCLUDE_DIR) $(BOOST_LINK_FLAGS) TaskBoostLearn.cpp matlab_eigen.o -o task_boost_model
+
+TaskBoostImp: TaskBoostLearn.cpp Booster.h matlab_utils.h matlab_eigen.h matlab_eigen.cpp
+	$(MEX) $(MEX_OPTION) -I$(EIGEN_INCLUDE_DIR) -I$(BOOST_INCLUDE_DIR) $(BOOST_LINK_FLAGS) TaskBoostImp.cpp matlab_eigen.o -o task_boost_ex_imp
