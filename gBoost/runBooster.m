@@ -73,7 +73,9 @@ for f = 1:length(folds)
           signal_struct.signal = signal_struct.signal(midx, :)'; % transpose so that the result is genes x mot
           sel_ex = exc == i; % get examples corresponding to this experiment
           sel_gene = exr(sel_ex); % get the gene index of these examples
-          X(sel_ex, :) = X(sel_ex, :) + train_params.signal_weight * signal_struct.signal(sel_gene, :);
+          X(sel_ex, :) = X(sel_ex, :) + train_params.signal_weight ...
+              * signal_struct.signal(sel_gene, :) + ...
+              train_params.signal_weight_inter * X(sel_ex, :) * signal_struct.signal(sel_gene, :);
         end
       end
       X = [pexp(exc, :) X];
