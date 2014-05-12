@@ -32,10 +32,10 @@ aucx = cell(ncuts + 1, 1);
 aucy = cell(ncuts + 1, 1);
 
 for f = 1:nfolds
-  trloss = trloss_cell_all{f};
-  tsloss = tsloss_cell_all{f};
+  trloss = trloss_cell_all{f}(1:niter);
+  tsloss = tsloss_cell_all{f}(1:niter);
   pred = pred_all{f};
-  best_tasks = best_tasks_all{f};
+  best_tasks = best_tasks_all{f}(1:niter);
   tr = tr_all{f};
   ts = ts_all{f}; 
   
@@ -47,10 +47,10 @@ for f = 1:nfolds
   y = cexp(all_ind);
   all_tr_ind = ismember(all_ind, find(tr));
   all_ts_ind = ismember(all_ind, find(ts));
-  trr2_all(:, f) = 1 - trloss(1:niter) / sum((y(all_tr_ind) - mean(y(all_tr_ind))).^2);
+  trr2_all(:, f) = 1 - trloss / sum((y(all_tr_ind) - mean(y(all_tr_ind))).^2);
   tsr2_all(:, f) = 1 - tsloss(1:niter) / sum((y(all_ts_ind) - mean(y(all_ts_ind))).^2);
-  trloss_all(:, f) = trloss(1:niter);
-  tsloss_all(:, f) = tsloss(1:niter);
+  trloss_all(:, f) = trloss;
+  tsloss_all(:, f) = tsloss;
   
   % I should be averaging the x and y values across folds, but the plot
   % doesn't change noticeably across folds...
@@ -84,13 +84,16 @@ for f = 1:nfolds
   end
 end
 
+nts = repmat(cellfun(@(x) nnz(x), ts_all)', niter, 1);
+ntr = repmat(cellfun(@(x) nnz(x), tr_all)', niter, 1); 
+
 figure('Visible', 'off');
 subplot(2,2,1);
-plot(1:niter, mean(trloss_all, 2) / nnz(tr), '-b', 1:niter, mean(tsloss_all, 2) / nnz(ts), '--b');
+plot(1:niter, mean(trloss_all ./ ntr, 2), '-b', 1:niter, mean(tsloss_all ./ nts, 2), '--b');
 xlabel('Iteration', 'FontSize', 10);
 ylabel('Loss', 'FontSize', 10);
-legend({['Train (', num2str(mean(trloss_all(end, :)) / nnz(tr)), ')'], ...
-  ['Test (', num2str(mean(tsloss_all(end, :)) / nnz(ts)), ')']}, 'Location', 'NorthEast');
+legend({['Train (', num2str(mean(trloss_all(end, :) ./ ntr(end, :))), ')'], ...
+  ['Test (', num2str(mean(tsloss_all(end, :) ./ nts(end, :))), ')']}, 'Location', 'NorthEast');
 set(gca, 'FontSize', 10);
 subplot(2,2,2);
 plot(1:niter, mean(trr2_all, 2), '-b', 1:niter, mean(tsr2_all, 2), '--b');
@@ -104,9 +107,9 @@ styles = {'g', 'b--', 'g--'};
 for c = 1:ncuts,
   plot(aucx{c + 1}, aucy{c + 1}, styles{c}, 'LineWidth', 0.6);
 end
-legends = {['All (', num2str(median(auc_all(:, 1))), ')']};
+legends = {['All (', num2str(mean(auc_all(:, 1))), ')']};
 for c = 1:ncuts
-  legends = [legends, ['abs(z) > ', num2str(auc_cuts(c)), ' (', num2str(median(auc_all(:, c + 1))), ')']];
+  legends = [legends, ['abs(z) > ', num2str(auc_cuts(c)), ' (', num2str(mean(auc_all(:, c + 1))), ')']];
 end
 legend(legends, 'Location', 'SouthEast');
 xlabel('FPR', 'FontSize', 10);

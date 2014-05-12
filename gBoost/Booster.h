@@ -472,13 +472,20 @@ namespace GBoost {
 
     template < typename ResponseDerived2 >
     void varImportance(MatrixBase<ResponseDerived2>& imp){
+      varImportance(imp, bestTasks.size());
+    }
+
+    template < typename ResponseDerived2 >
+    void varImportance(MatrixBase<ResponseDerived2>& imp, unsigned niter){
       typedef typename ResponseDerived2::Scalar RType;
       
       assert(imp.rows() == nfeat);
       assert(imp.cols() == ntasks);
       imp.setZero();
 
-      for(unsigned i = 0; i < bestTasks.size(); ++i){
+      assert(niter <= bestTasks.size());
+
+      for(unsigned i = 0; i < niter; ++i){
 	Matrix<RType, Dynamic, 1> c(nfeat);
 	c.setZero();
 	learners[i].varImportance(c); 
@@ -500,11 +507,18 @@ namespace GBoost {
 
     template < typename ResponseDerived2 >
     void getFeatMat(MatrixBase<ResponseDerived2>& m){
+      getFeatMat(m, bestTasks.size());
+    }
+
+    template < typename ResponseDerived2 >
+    void getFeatMat(MatrixBase<ResponseDerived2>& m, unsigned niter){
       assert(m.rows() == getNumInternal());
       assert(m.cols() == 3);
 
       unsigned j = 0;
-      for(unsigned i = 0; i < bestTasks.size(); ++i){
+      assert(niter <= bestTasks.size());
+
+      for(unsigned i = 0; i < niter; ++i){
 	vector<NodeType> nodes = learners[i].getNodes();
 	for(unsigned k = 0; k < nodes.size(); ++k){
 	  if(!nodes[k].isLeaf){
@@ -519,4 +533,4 @@ namespace GBoost {
   };
 }
 
-#endif //_TASK_TREE_BOSTER_H
+#endif //_TASK_TREE_BOOSTER_H

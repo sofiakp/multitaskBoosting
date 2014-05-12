@@ -79,20 +79,29 @@ void mexFunctionTrain(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]
 
 void mexFunctionGetModel(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
   
-  if (nrhs != 1 || nlhs > 6) {
-    mexErrMsgTxt("Usage:  [trloss, tsloss, pred, bestTasks, imp, featMat] = task_boost_model(filename)"); 
+  if (nrhs != 2 || nlhs > 6) {
+    mexErrMsgTxt("Usage:  [trloss, tsloss, pred, bestTasks, imp, featMat] = task_boost_model(filename, niter)"); 
   }
   if(!mxIsChar(prhs[0])){
     mexErrMsgTxt("filename must be a string");
   }
+  if(!isIntegerScalar(prhs[1]) || getDoubleScalar(prhs[1]) < 0){
+    mexErrMsgTxt("niter must be a non-negative integer");
+  }
+
   char* filename = mxArrayToString(prhs[0]);
-  
+  unsigned int in_niter = (unsigned int)getDoubleScalar(prhs[1]);
+
   TaskTreeBooster< MappedSparseMatrix<double,ColMajor,long>, Map<MatrixXd>, Map<VectorXd> > booster;
   booster.load(filename);
 
   if(nlhs > 0){
     VectorXd trloss = booster.getTrLoss();
     unsigned niter = trloss.size();
+    if(niter < in_niter){
+      mexErrMsgTxt("niter exceeds model's size");
+    }
+    niter = in_niter;
     plhs[0] = mxCreateDoubleMatrix(niter, 1, mxREAL);
     double* trloss_ptr = mxGetPr(plhs[0]);
     for(unsigned i = 0; i < niter; ++i) trloss_ptr[i] = trloss(i);
@@ -104,6 +113,7 @@ void mexFunctionGetModel(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prh
       for(unsigned i = 0; i < niter; ++i) tsloss_ptr[i] = tsloss(i);
     
       if(nlhs > 2){
+	// TODO: Fix so that this returns the prediction from a smaller iteration if necessary.
 	VectorXd F = booster.getF();
 	plhs[2] = mxCreateDoubleMatrix(F.size(), 1, mxREAL);
 	double* F_ptr = mxGetPr(plhs[2]);
@@ -111,17 +121,17 @@ void mexFunctionGetModel(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prh
     
 	if(nlhs > 3){
 	  vector<unsigned> bestTasks = booster.getBestTasks();
-	  plhs[3] = mxCreateDoubleMatrix(bestTasks.size(), 1, mxREAL);
+	  plhs[3] = mxCreateDoubleMatrix(niter, 1, mxREAL);
 	  double* bt_ptr = mxGetPr(plhs[3]);
 	  // Add 1 for matlab indexing
-	  for(unsigned i = 0; i < bestTasks.size(); ++i) bt_ptr[i] = bestTasks[i] + 1;
+	  for(unsigned i = 0; i < niter; ++i) bt_ptr[i] = bestTasks[i] + 1;
 
 	  if(nlhs > 4){
 	    unsigned ntasks = booster.numTasks();
 	    unsigned nfeat = booster.numFeat();
 	    plhs[4] = mxCreateDoubleMatrix(nfeat, ntasks, mxREAL); // This should be nfeat-by-ntasks
 	    Map<MatrixXd> imp(mxGetPr(plhs[4]), nfeat, ntasks);
-	    booster.varImportance(imp);
+	    booster.varImportance(imp, niter);
 	    
 	    if(nlhs > 5){
 	      unsigned ninternal = booster.getNumInternal();
