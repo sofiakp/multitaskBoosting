@@ -1,0 +1,19 @@
+Code for multi-task boosting using regression trees as weak learners. 
+The main functionality is implemented in Booster.h and RegressionTree.h
+(in the gBoost directory). RegressionTreeLearn.cpp and TaskBoostLearn.cpp
+provide mex functions. runBooster.m shows how these can be used in MATLAB.
+
+To compile the code in gBoost, you will need the following libraries:
+- Eigen (http://eigen.tuxfamily.org)
+- Boost (http://www.boost.org/).
+This code was tested with Boost version 1.54.
+
+Then, go to the gBoost directory, modify the paths to these libraries in 
+the Makefile, and type make.
+ 
+This script was used to generate the results in:
+
+"Modeling context-specific gene regulation with multi-task boosting", 
+Sofia Kyriazopoulou-Panagiotopoulou, Marco Cusumano-Towner, 
+Serafim Batzoglou and Anshul Kundaje, 
+NIPS Workshop in Machine Learning in Computational Biology, 2013.
