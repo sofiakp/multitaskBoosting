@@ -73,7 +73,7 @@ if merge
     save(fullfile(outdir, ['clusters', num2str(fold), '.mat']), 'km', ...
          'Z', 'centroids', 'tasks', 'levels');
 else
-    levels = levels(1:nclust);
+    levels = ones(size(levels(1:nclust)));
     tasks = tasks(:, 1:nclust);
     save(fullfile(outdir, ['clusters', num2str(fold), '.mat']), 'km', ...
          'centroids', 'tasks', 'levels');
